@@ -1,0 +1,146 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+body {
+  width: 350px;
+  min-height: 300px;
+  background-color: #f9f9f9;
+}
+
+.container {
+  padding: 16px;
+}
+
+h1 {
+  color: #2c3e50;
+  font-size: 20px;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+h2 {
+  color: #2c3e50;
+  font-size: 18px;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+h3 {
+  color: #2c3e50;
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+
+h4 {
+  color: #2c3e50;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+p {
+  color: #7f8c8d;
+  font-size: 14px;
+  line-height: 1.4;
+  margin-bottom: 16px;
+}
+
+.primary-btn, .secondary-btn {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 10px;
+  transition: background-color 0.2s;
+}
+
+.primary-btn {
+  background-color: #3498db;
+  color: white;
+}
+
+.primary-btn:hover {
+  background-color: #2980b9;
+}
+
+.secondary-btn {
+  background-color: #ecf0f1;
+  color: #2c3e50;
+}
+
+.secondary-btn:hover {
+  background-color: #bdc3c7;
+}
+
+.hidden {
+  display: none;
+}
+
+.loader {
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #3498db;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 2s linear infinite;
+  margin: 20px auto;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.success-icon, .error-icon {
+  font-size: 48px;
+  text-align: center;
+  margin: 10px 0;
+}
+
+.success-icon {
+  color: #2ecc71;
+}
+
+.error-icon {
+  color: #e74c3c;
+}
+
+#job-preview {
+  background-color: white;
+  border-radius: 4px;
+  padding: 12px;
+  margin: 16px 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+#company-name {
+  color: #7f8c8d;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.skills-preview {
+  margin-top: 8px;
+}
+
+#skills-list {
+  list-style-type: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+#skills-list li {
+  background-color: #e1f0fa;
+  color: #3498db;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+}

@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JobSkillTracker Dashboard</title>
+  <link rel="stylesheet" href="dashboard.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <header>
+    <div class="header-content">
+      <h1>JobSkillTracker Dashboard</h1>
+      <div class="header-actions">
+        <button id="uploadResumeBtn" class="primary-btn">Upload Resume</button>
+        <input type="file" id="resumeFileInput" accept=".pdf,.doc,.docx" style="display: none;">
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="dashboard-stats">
+      <div class="stat-card">
+        <h3>Jobs Saved</h3>
+        <p id="jobsSavedCount">0</p>
+      </div>
+      <div class="stat-card">
+        <h3>Unique Skills</h3>
+        <p id="uniqueSkillsCount">0</p>
+      </div>
+      <div class="stat-card">
+        <h3>Top Skill</h3>
+        <p id="topSkill">-</p>
+      </div>
+    </div>
+
+    <div class="dashboard-grid">
+      <section class="dashboard-section jobs-list-section">
+        <h2>Saved Jobs</h2>
+        <div class="filter-controls">
+          <input type="text" id="jobSearchInput" placeholder="Search jobs...">
+          <select id="jobRoleFilter">
+            <option value="">All Roles</option>
+          </select>
+        </div>
+        <div id="savedJobsList" class="jobs-list">
+          <!-- Jobs will be populated here -->
+          <div class="empty-state">
+            <p>No jobs saved yet. Use the extension to save job descriptions.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="dashboard-section skills-analysis-section">
+        <h2>Skills Analysis</h2>
+        <div class="chart-container">
+          <canvas id="skillsChart"></canvas>
+        </div>
+        <div class="skills-categories">
+          <div class="category">
+            <h3>Technical Skills</h3>
+            <ul id="technicalSkillsList" class="skills-list">
+              <!-- Technical skills will be populated here -->
+            </ul>
+          </div>
+          <div class="category">
+            <h3>Soft Skills</h3>
+            <ul id="softSkillsList" class="skills-list">
+              <!-- Soft skills will be populated here -->
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="dashboard-section resume-analysis-section">
+        <h2>Resume Analysis</h2>
+        <div id="resumeUploadPrompt">
+          <p>Upload your resume to get personalized skill gap analysis and project recommendations.</p>
+          <button id="promptUploadBtn" class="secondary-btn">Upload Resume</button>
+        </div>
+        <div id="resumeAnalysisResults" class="hidden">
+          <div class="resume-skills">
+            <h3>Skills in Your Resume</h3>
+            <ul id="resumeSkillsList" class="skills-list">
+              <!-- Resume skills will be populated here -->
+            </ul>
+          </div>
+          <div class="skill-gaps">
+            <h3>Skill Gaps</h3>
+            <ul id="skillGapsList" class="skills-list highlight">
+              <!-- Skill gaps will be populated here -->
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="dashboard-section recommendations-section">
+        <h2>Project Recommendations</h2>
+        <button id="analyzeBtn" class="primary-btn">Analyze & Get Recommendations</button>
+        <div id="projectRecommendations" class="hidden">
+          <div class="loading-indicator hidden">
+            <div class="loader"></div>
+            <p>Generating personalized project recommendations...</p>
+          </div>
+          <div id="recommendationsList">
+            <!-- Project recommendations will be populated here -->
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- Modal for job details -->
+  <div id="jobModal" class="modal">
+    <div class="modal-content">
+      <span class="close-modal">&times;</span>
+      <h2 id="modalJobTitle">Job Title</h2>
+      <p id="modalCompanyName">Company Name</p>
+      <div class="modal-section">
+        <h3>Required Skills</h3>
+        <ul id="modalSkillsList" class="skills-list">
+          <!-- Skills will be populated here -->
+        </ul>
+      </div>
+      <div class="modal-section">
+        <h3>Key Responsibilities</h3>
+        <ul id="modalResponsibilitiesList">
+          <!-- Responsibilities will be populated here -->
+        </ul>
+      </div>
+      <div class="modal-actions">
+        <button id="deleteJobBtn" class="danger-btn">Delete Job</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>

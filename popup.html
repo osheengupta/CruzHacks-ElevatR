@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>JobSkillTracker</title>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <h1>JobSkillTracker</h1>
+    
+    <div id="initial-view">
+      <p>Found a job posting? Save it to track required skills!</p>
+      <button id="saveJobBtn" class="primary-btn">Save Job Description</button>
+      <button id="viewDashboardBtn" class="secondary-btn">View Dashboard</button>
+    </div>
+    
+    <div id="saving-view" class="hidden">
+      <div class="loader"></div>
+      <p>Analyzing job description...</p>
+    </div>
+    
+    <div id="success-view" class="hidden">
+      <div class="success-icon">✓</div>
+      <h2>Job Saved!</h2>
+      <div id="job-preview">
+        <h3 id="job-title">Job Title</h3>
+        <p id="company-name">Company Name</p>
+        <div class="skills-preview">
+          <h4>Top Skills Detected:</h4>
+          <ul id="skills-list"></ul>
+        </div>
+      </div>
+      <button id="viewAllJobsBtn" class="primary-btn">View All Saved Jobs</button>
+    </div>
+    
+    <div id="error-view" class="hidden">
+      <div class="error-icon">!</div>
+      <h2>Error</h2>
+      <p id="error-message">Could not process job description.</p>
+      <button id="tryAgainBtn" class="primary-btn">Try Again</button>
+    </div>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
