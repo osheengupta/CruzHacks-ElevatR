@@ -1,7 +1,7 @@
 // Background script for JobSkillTracker extension
 
 // Backend API URL
-const API_BASE_URL = "http://localhost:8000";
+const API_BASE_URL = "http://localhost:8001";
 
 // Listen for installation
 chrome.runtime.onInstalled.addListener(function() {
@@ -54,8 +54,17 @@ async function processJobWithCrewAI(jobData) {
     // Transform the result into the format expected by the extension
     const skills = [];
     
-    // Add technical skills
-    if (result.technical_skills) {
+    // Add key skills as technical skills
+    if (result.key_skills) {
+      result.key_skills.forEach(skill => {
+        skills.push({
+          name: skill,
+          type: "technical",
+          confidence: 0.9
+        });
+      });
+    } else if (result.technical_skills) {
+      // Backward compatibility with old format
       result.technical_skills.forEach(skill => {
         skills.push({
           name: skill,
@@ -65,8 +74,25 @@ async function processJobWithCrewAI(jobData) {
       });
     }
     
-    // Add soft skills
-    if (result.soft_skills) {
+    // Add requirements as soft skills if they look like skills
+    // Otherwise, treat them as responsibilities
+    const responsibilities = [];
+    if (result.requirements) {
+      result.requirements.forEach(req => {
+        // If the requirement is short (likely a skill), add it as a soft skill
+        if (req.split(' ').length <= 5) {
+          skills.push({
+            name: req,
+            type: "soft",
+            confidence: 0.8
+          });
+        } else {
+          // Otherwise, it's probably a responsibility
+          responsibilities.push(req);
+        }
+      });
+    } else if (result.soft_skills) {
+      // Backward compatibility with old format
       result.soft_skills.forEach(skill => {
         skills.push({
           name: skill,
@@ -76,21 +102,29 @@ async function processJobWithCrewAI(jobData) {
       });
     }
     
+    // Add responsibilities from the old format if available
+    if (result.responsibilities && result.responsibilities.length > 0) {
+      responsibilities.push(...result.responsibilities);
+    }
+    
     // Update skill frequency in storage
     updateSkillFrequency(skills);
     
+    // Format salary information
+    const salary = result.salary && result.salary.trim() !== "" ? result.salary : "Not specified";
+    
     return {
       title: jobData.title,
-      company: jobData.company,
+      company: jobData.company || result.company,
       skills: skills,
-      responsibilities: result.responsibilities || []
+      responsibilities: responsibilities,
+      salary: salary
     };
   } catch (error) {
     console.error("Error processing job with CrewAI:", error);
-    
-    // Fallback to mock implementation if the API call fails
-    return processJobWithMockLLM(jobData);
+    throw error; // Don't return mock fallback
   }
+  
 }
 
 // Mock function as fallback if the API call fails

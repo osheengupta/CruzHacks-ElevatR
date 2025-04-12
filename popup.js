@@ -15,6 +15,9 @@ document.addEventListener('DOMContentLoaded', function() {
   const skillsList = document.getElementById('skills-list');
   const errorMessage = document.getElementById('error-message');
   
+  // Backend API URL
+  const API_BASE_URL = "http://localhost:8000";
+  
   // Show initial view by default
   showView(initialView);
   
@@ -67,53 +70,59 @@ document.addEventListener('DOMContentLoaded', function() {
     showView(errorView);
   }
   
-  function processJobDescription(jobData) {
-    // In a real implementation, this would call your backend API
-    // For now, we'll simulate the API call with a timeout
-    
-    // Mock API call
-    setTimeout(function() {
-      try {
-        // For demo purposes, we'll extract some basic info
-        const extractedData = {
-          title: jobData.title || "Software Engineer",
-          company: jobData.company || "Tech Company",
-          skills: ["JavaScript", "React", "Node.js", "API Design", "Problem Solving"]
-        };
-        
-        // Save to local storage
-        chrome.storage.local.get({savedJobs: []}, function(data) {
-          const savedJobs = data.savedJobs;
-          savedJobs.push({
-            id: Date.now(),
-            url: jobData.url,
-            title: extractedData.title,
-            company: extractedData.company,
-            description: jobData.description,
-            skills: extractedData.skills,
-            dateAdded: new Date().toISOString()
-          });
+  async function processJobDescription(jobData) {
+    try {
+      console.log("Processing job data:", jobData);
+      
+      // Send to background script for processing with CrewAI
+      chrome.runtime.sendMessage(
+        {action: "processJobWithLLM", jobData: jobData},
+        function(response) {
+          if (chrome.runtime.lastError || !response || response.error) {
+            console.error("Error processing job:", response ? response.error : chrome.runtime.lastError);
+            showError("Error processing job description. Please try again.");
+            return;
+          }
           
-          chrome.storage.local.set({savedJobs: savedJobs}, function() {
-            // Update UI with extracted info
-            jobTitle.textContent = extractedData.title;
-            companyName.textContent = extractedData.company;
-            
-            // Clear and populate skills list
-            skillsList.innerHTML = '';
-            extractedData.skills.forEach(function(skill) {
-              const li = document.createElement('li');
-              li.textContent = skill;
-              skillsList.appendChild(li);
+          console.log("Processed job data:", response);
+          
+          // Save to local storage
+          chrome.storage.local.get({savedJobs: []}, function(data) {
+            const savedJobs = data.savedJobs;
+            savedJobs.push({
+              id: Date.now(),
+              url: jobData.url,
+              title: response.title || jobData.title,
+              company: response.company || jobData.company,
+              description: jobData.description,
+              skills: response.skills || [],
+              responsibilities: response.responsibilities || [],
+              dateAdded: new Date().toISOString()
             });
             
-            // Show success view
-            showView(successView);
+            chrome.storage.local.set({savedJobs: savedJobs}, function() {
+              // Update UI with extracted info
+              jobTitle.textContent = response.title || jobData.title;
+              companyName.textContent = response.company || jobData.company;
+              
+              // Clear and populate skills list
+              skillsList.innerHTML = '';
+              const skills = response.skills || [];
+              skills.forEach(function(skill) {
+                const li = document.createElement('li');
+                li.textContent = typeof skill === 'string' ? skill : skill.name;
+                skillsList.appendChild(li);
+              });
+              
+              // Show success view
+              showView(successView);
+            });
           });
-        });
-      } catch (err) {
-        showError("Error processing job description: " + err.message);
-      }
-    }, 1500); // Simulate API delay
+        }
+      );
+    } catch (err) {
+      console.error("Error processing job description:", err);
+      showError("Error processing job description: " + err.message);
+    }
   }
 });
