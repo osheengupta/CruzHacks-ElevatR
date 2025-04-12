@@ -1,9 +1,9 @@
 // Dashboard.js - Fixed version with working buttons
 document.addEventListener('DOMContentLoaded', function() {
-  console.log('Dashboard script loaded');
+  console.log('Fixed Dashboard script loaded');
   
-  // API URL for backend
-  const API_BASE_URL = "http://localhost:8000";
+  // API URL for backend - FIXED: Using correct port
+  const API_BASE_URL = "http://localhost:8001";
   
   // Generate a unique user ID or retrieve from storage
   let userId;
@@ -28,7 +28,7 @@ document.addEventListener('DOMContentLoaded', function() {
   function getElement(id) {
     const element = document.getElementById(id);
     if (!element) {
-      console.error(`Element with ID "${id}" not found`);
+      console.warn(`Element with ID "${id}" not found`);
     }
     return element;
   }
@@ -81,9 +81,9 @@ document.addEventListener('DOMContentLoaded', function() {
     elements.jobModal = getElement('jobModal');
     elements.modalJobTitle = getElement('modalJobTitle');
     elements.modalCompanyName = getElement('modalCompanyName');
-    elements.modalJobDescription = getElement('modalJobDescription');
-    elements.modalJobSkills = getElement('modalJobSkills');
-    elements.closeModal = getElement('closeModal');
+    elements.modalSkillsList = getElement('modalSkillsList');
+    elements.modalResponsibilitiesList = getElement('modalResponsibilitiesList');
+    elements.closeModal = document.querySelector('.close-modal');
     elements.deleteJobBtn = getElement('deleteJobBtn');
     
     // Log element status
@@ -97,270 +97,322 @@ document.addEventListener('DOMContentLoaded', function() {
     
     console.log('Critical element status:');
     criticalElements.forEach(id => {
-      console.log(`${id}: ${elements[id] ? 'Found' : 'Not found'}`);
+      console.log(`${id}: ${elements[id] ? 'Found' : 'NOT FOUND'}`);
     });
   }
   
-  // Initialize the AI chatbot functionality
+  // Initialize elements first
+  initializeElements();
+  
+  // Debug: Check for saved jobs in storage
+  try {
+    // Try Chrome storage API first
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      chrome.storage.local.get(['savedJobs'], function(result) {
+        console.log('Saved jobs from Chrome storage:', result.savedJobs);
+        if (result.savedJobs && result.savedJobs.length > 0) {
+          console.log(`Found ${result.savedJobs.length} jobs in Chrome storage`);
+        } else {
+          console.log('No saved jobs found in Chrome storage');
+        }
+      });
+    } else {
+      // Try localStorage as fallback
+      const savedJobsStr = localStorage.getItem('savedJobs');
+      const savedJobs = savedJobsStr ? JSON.parse(savedJobsStr) : [];
+      console.log('Saved jobs from localStorage:', savedJobs);
+      if (savedJobs.length > 0) {
+        console.log(`Found ${savedJobs.length} jobs in localStorage`);
+      } else {
+        console.log('No saved jobs found in localStorage');
+      }
+    }
+  } catch (error) {
+    console.error('Error checking saved jobs:', error);
+  }
+  
+  // Initialize the chatbot
   function initChatbot() {
-    console.log('Initializing chatbot');
+    console.log('Initializing AI chatbot');
     
-    // Current chat mode
-    let currentMode = 'general';
-    
-    // Paper input mode (url or file)
+    // Initialize chat state
+    let chatMode = 'general';
     let paperInputMode = 'url';
-    
-    // Chat history
     let chatHistory = [];
+    let paperUrl = '';
+    let paperText = '';
+    let targetSkill = '';
     
-    // Check if critical elements exist before setting up event listeners
-    if (!elements.generalChatBtn || !elements.paperSummaryBtn || 
-        !elements.skillRoadmapBtn || !elements.sendMessageBtn || 
-        !elements.chatInput) {
-      console.error('Critical chatbot elements not found, aborting initialization');
+    // Check if critical elements exist
+    if (!elements.chatInput || !elements.sendMessageBtn) {
+      console.error('Critical chat elements missing');
       return;
     }
     
     // Set up button click handlers with inline functions for clarity
-    elements.generalChatBtn.onclick = function() {
-      console.log('General chat button clicked');
-      setMode('general');
-    };
+    if (elements.generalChatBtn) {
+      elements.generalChatBtn.onclick = function() {
+        setMode('general');
+      };
+    }
     
-    elements.paperSummaryBtn.onclick = function() {
-      console.log('Paper summary button clicked');
-      setMode('paper_summary');
-    };
+    if (elements.paperSummaryBtn) {
+      elements.paperSummaryBtn.onclick = function() {
+        setMode('paper_summary');
+      };
+    }
     
-    elements.skillRoadmapBtn.onclick = function() {
-      console.log('Skill roadmap button clicked');
-      setMode('roadmap');
-    };
+    if (elements.skillRoadmapBtn) {
+      elements.skillRoadmapBtn.onclick = function() {
+        setMode('roadmap');
+      };
+    }
     
-    // Set up paper input tab buttons
+    // URL/Upload tab switching
     if (elements.urlTabBtn) {
       elements.urlTabBtn.onclick = function() {
-        console.log('URL tab button clicked');
         setPaperInputMode('url');
       };
     }
     
     if (elements.uploadTabBtn) {
       elements.uploadTabBtn.onclick = function() {
-        console.log('Upload tab button clicked');
         setPaperInputMode('file');
       };
     }
     
-    // Set up paper file input
+    // Paper file upload handling
     if (elements.paperFileInput) {
       elements.paperFileInput.onchange = function(event) {
-        console.log('Paper file input change event');
         handlePaperFileUpload(event);
       };
     }
     
     // Set up message sending
-    elements.sendMessageBtn.onclick = function() {
-      console.log('Send button clicked');
-      sendMessage();
-    };
-    
-    elements.chatInput.onkeypress = function(e) {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        console.log('Enter key pressed in chat input');
-        e.preventDefault();
+    if (elements.sendMessageBtn) {
+      elements.sendMessageBtn.onclick = function() {
         sendMessage();
-      }
-    };
+      };
+    }
+    
+    if (elements.chatInput) {
+      elements.chatInput.onkeypress = function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      };
+    }
     
     // Function to set the chat mode
     function setMode(mode) {
-      console.log('Setting chat mode to:', mode);
-      currentMode = mode;
+      console.log(`Setting chat mode to: ${mode}`);
+      chatMode = mode;
       
-      // Remove active class from all buttons
-      elements.generalChatBtn.classList.remove('active');
-      elements.paperSummaryBtn.classList.remove('active');
-      elements.skillRoadmapBtn.classList.remove('active');
+      // Reset paper-related state when changing modes
+      paperUrl = '';
+      paperText = '';
+      targetSkill = '';
       
-      // Hide all mode-specific inputs
+      // Update UI based on mode
+      if (elements.generalChatBtn) elements.generalChatBtn.classList.toggle('active', mode === 'general');
+      if (elements.paperSummaryBtn) elements.paperSummaryBtn.classList.toggle('active', mode === 'paper_summary');
+      if (elements.skillRoadmapBtn) elements.skillRoadmapBtn.classList.toggle('active', mode === 'roadmap');
+      
+      // Show/hide paper URL input
       if (elements.paperUrlContainer) {
-        elements.paperUrlContainer.classList.add('hidden');
+        elements.paperUrlContainer.classList.toggle('hidden', mode !== 'paper_summary');
       }
       
-      // Clear chat history when switching modes
-      chatHistory = [];
-      
-      // Set up the UI for the selected mode
+      // Add a system message indicating mode change
+      let modeMessage = '';
       if (mode === 'general') {
-        elements.generalChatBtn.classList.add('active');
-        elements.chatInput.placeholder = 'Type your message here...';
+        modeMessage = "I'm in general chat mode. Ask me anything about programming, technology, or learning resources!";
       } else if (mode === 'paper_summary') {
-        elements.paperSummaryBtn.classList.add('active');
-        elements.paperUrlContainer.classList.remove('hidden');
-        elements.chatInput.placeholder = 'Ask about the paper...';
+        modeMessage = "I'll help you summarize research papers. Please provide a URL to a paper or upload a PDF/DOCX file.";
       } else if (mode === 'roadmap') {
-        elements.skillRoadmapBtn.classList.add('active');
-        elements.chatInput.placeholder = 'Enter a skill you want to learn...';
-        // Focus on the chat input field
-        setTimeout(() => elements.chatInput.focus(), 100);
+        modeMessage = "I'll create a learning roadmap for you. What skill would you like to learn?";
+      }
+      
+      if (modeMessage) {
+        addMessageToChat('assistant', modeMessage);
       }
     }
     
     // Function to set paper input mode (url or file)
     function setPaperInputMode(mode) {
-      console.log('Setting paper input mode to:', mode);
+      console.log(`Setting paper input mode to: ${mode}`);
       paperInputMode = mode;
       
-      // Update active tab
-      elements.urlTabBtn.classList.toggle('active', mode === 'url');
-      elements.uploadTabBtn.classList.toggle('active', mode === 'file');
+      // Update UI
+      if (elements.urlTabBtn) elements.urlTabBtn.classList.toggle('active', mode === 'url');
+      if (elements.uploadTabBtn) elements.uploadTabBtn.classList.toggle('active', mode === 'file');
+      if (elements.urlInputSection) elements.urlInputSection.classList.toggle('hidden', mode !== 'url');
+      if (elements.fileUploadSection) elements.fileUploadSection.classList.toggle('hidden', mode !== 'file');
       
-      // Show/hide appropriate input section
-      elements.urlInputSection.classList.toggle('hidden', mode !== 'url');
-      elements.fileUploadSection.classList.toggle('hidden', mode !== 'file');
+      // Reset state
+      if (mode === 'url') {
+        paperText = '';
+        if (elements.paperUrlInput) elements.paperUrlInput.value = '';
+      } else {
+        paperUrl = '';
+        if (elements.paperFileInput) elements.paperFileInput.value = '';
+        if (elements.uploadedFileName) elements.uploadedFileName.classList.add('hidden');
+      }
     }
     
     // Function to handle paper file upload
-    async function handlePaperFileUpload(event) {
-      console.log('Handling paper file upload');
+    function handlePaperFileUpload(event) {
       const file = event.target.files[0];
       if (!file) return;
       
-      try {
-        const originalText = elements.uploadedFileName.textContent;
-        elements.uploadedFileName.textContent = `Processing ${file.name}...`;
+      console.log(`Paper file selected: ${file.name}`);
+      
+      // Show file name
+      if (elements.uploadedFileName) {
+        elements.uploadedFileName.textContent = file.name;
         elements.uploadedFileName.classList.remove('hidden');
-        
-        // Simple file reading for text files
-        if (file.type === 'text/plain') {
-          const reader = new FileReader();
-          reader.onload = function(e) {
-            window.uploadedPaperText = e.target.result;
-            elements.uploadedFileName.textContent = `${file.name} (ready)`;
-          };
-          reader.onerror = function() {
-            elements.uploadedFileName.textContent = originalText;
-            showErrorMessage('Error reading file');
-          };
-          reader.readAsText(file);
-        } else {
-          // For now, we'll just use a sample text for non-text files
-          window.uploadedPaperText = "Sample paper content for demonstration purposes.";
-          elements.uploadedFileName.textContent = `${file.name} (processed)`;
-        }
-      } catch (error) {
-        console.error('Error handling paper file:', error);
-        showErrorMessage('Error processing file');
       }
+      
+      // Create a FormData object
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      // Show loading state
+      const loadingMessage = addLoadingMessage();
+      
+      // Upload the file
+      fetch(`${API_BASE_URL}/upload-paper`, {
+        method: 'POST',
+        body: formData
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`File upload failed with status: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        removeLoadingMessage(loadingMessage);
+        
+        if (data.error) {
+          addMessageToChat('assistant', `Error: ${data.error}`);
+          return;
+        }
+        
+        paperText = data.text;
+        addMessageToChat('assistant', `I've processed your file "${file.name}". You can now ask me questions about it.`);
+      })
+      .catch(error => {
+        console.error('Error uploading file:', error);
+        removeLoadingMessage(loadingMessage);
+        addMessageToChat('assistant', `Sorry, there was an error uploading your file: ${error.message}`);
+      });
     }
     
     // Function to send a message
-    async function sendMessage() {
-      console.log('Send message function called');
-      const message = elements.chatInput.value.trim();
+    function sendMessage() {
+      if (!elements.chatInput) return;
       
-      if (!message) {
-        console.log('Empty message, not sending');
-        return;
-      }
+      const messageText = elements.chatInput.value.trim();
+      if (!messageText) return;
       
-      console.log('Sending message:', message);
+      console.log(`Sending message in ${chatMode} mode: ${messageText.substring(0, 30)}...`);
       
       // Clear input
       elements.chatInput.value = '';
       
       // Add user message to chat
-      addMessageToChat('user', message);
+      addMessageToChat('user', messageText);
       
-      // Add a loading message
+      // Get paper URL if in paper_summary mode with URL input
+      if (chatMode === 'paper_summary' && paperInputMode === 'url' && elements.paperUrlInput) {
+        paperUrl = elements.paperUrlInput.value.trim();
+      }
+      
+      // Prepare request data
+      const requestData = {
+        message: messageText,
+        chat_history: chatHistory,
+        mode: chatMode
+      };
+      
+      // Add mode-specific data
+      if (chatMode === 'paper_summary') {
+        if (paperUrl) {
+          requestData.paper_url = paperUrl;
+        } else if (paperText) {
+          requestData.paper_text = paperText;
+        }
+      } else if (chatMode === 'roadmap') {
+        // If this is the first message in roadmap mode, it's the target skill
+        if (!targetSkill) {
+          targetSkill = messageText;
+          requestData.target_skill = targetSkill;
+        }
+      }
+      
+      // Add message to history
+      chatHistory.push({
+        role: 'user',
+        content: messageText
+      });
+      
+      // Show loading indicator
       const loadingMessage = addLoadingMessage();
       
-      try {
-        // Prepare request data based on the current mode
-        const requestData = {
-          user_id: userId,
-          message: message,
-          mode: currentMode,
-          history: chatHistory
-        };
-        
-        // Add mode-specific data
-        if (currentMode === 'paper_summary') {
-          if (paperInputMode === 'url') {
-            const paperUrl = elements.paperUrlInput.value.trim();
-            if (!paperUrl) {
-              removeLoadingMessage(loadingMessage);
-              addMessageToChat('assistant', 'Please enter a paper URL.');
-              return;
-            }
-            requestData.paper_url = paperUrl;
-          } else {
-            if (!window.uploadedPaperText) {
-              removeLoadingMessage(loadingMessage);
-              addMessageToChat('assistant', 'Please upload a paper file.');
-              return;
-            }
-            requestData.paper_text = window.uploadedPaperText;
-          }
-        } else if (currentMode === 'roadmap') {
-          requestData.target_skill = message;
+      // Send request to backend
+      fetch(`${API_BASE_URL}/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestData)
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`API request failed with status: ${response.status}`);
         }
-        
-        // Send the request to the backend
-        console.log('Sending chat request to backend:', requestData);
-        const response = await fetch(`${API_BASE_URL}/chat`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(requestData)
-        });
-        
-        // Process the response
-        const data = await response.json();
-        
-        // Remove the loading message
+        return response.json();
+      })
+      .then(data => {
+        // Remove loading indicator
         removeLoadingMessage(loadingMessage);
         
-        // Handle error
+        // Handle response
         if (data.error) {
-          console.error('Error from chatbot API:', data.error);
           addMessageToChat('assistant', `Error: ${data.error}`);
           return;
         }
         
-        // Add the assistant's response to the chat
-        addMessageToChat('assistant', data.response);
+        const responseText = data.response || 'I processed your request, but there was no text response.';
         
-        // Update chat history
-        chatHistory.push({
-          role: 'user',
-          content: message
-        });
+        // Add assistant message to chat
+        addMessageToChat('assistant', responseText);
         
+        // Add to chat history
         chatHistory.push({
           role: 'assistant',
-          content: data.response
+          content: responseText
         });
         
-      } catch (error) {
-        console.error('Error in chat functionality:', error);
+        // Limit history size
+        if (chatHistory.length > 20) {
+          chatHistory = chatHistory.slice(chatHistory.length - 20);
+        }
+      })
+      .catch(error => {
+        console.error('Error sending message:', error);
         removeLoadingMessage(loadingMessage);
-        addMessageToChat('assistant', 'Sorry, there was an error processing your request. Please try again.');
-      }
+        addMessageToChat('assistant', `Sorry, there was an error processing your request: ${error.message}`);
+      });
     }
     
     // Function to add a message to the chat
     function addMessageToChat(role, content) {
-      console.log('Adding message to chat:', role, content);
+      if (!elements.chatMessages) return;
       
-      if (!elements.chatMessages) {
-        console.error('Chat messages container not found');
-        return null;
-      }
+      console.log(`Adding ${role} message: ${content.substring(0, 30)}...`);
       
       const messageDiv = document.createElement('div');
       messageDiv.className = `message ${role}`;
@@ -368,13 +420,40 @@ document.addEventListener('DOMContentLoaded', function() {
       const contentDiv = document.createElement('div');
       contentDiv.className = 'message-content';
       
-      // Simple markdown formatting
-      contentDiv.innerHTML = content
-        .replace(/\n/g, '<br>')
+      // Process markdown-like content (basic support)
+      let processedContent = content
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.*?)\*/g, '<em>$1</em>');
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+        .replace(/`(.*?)`/g, '<code>$1</code>')
+        .replace(/\n/g, '<br>');
       
+      contentDiv.innerHTML = processedContent;
       messageDiv.appendChild(contentDiv);
+      
+      elements.chatMessages.appendChild(messageDiv);
+      
+      // Scroll to bottom
+      elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+    }
+    
+    // Function to add a loading message
+    function addLoadingMessage() {
+      if (!elements.chatMessages) return null;
+      
+      const messageDiv = document.createElement('div');
+      messageDiv.className = 'message assistant loading';
+      
+      const contentDiv = document.createElement('div');
+      contentDiv.className = 'message-content';
+      
+      const loadingDots = document.createElement('div');
+      loadingDots.className = 'loading-dots';
+      loadingDots.innerHTML = '<span></span><span></span><span></span>';
+      
+      contentDiv.appendChild(loadingDots);
+      messageDiv.appendChild(contentDiv);
+      
       elements.chatMessages.appendChild(messageDiv);
       
       // Scroll to bottom
@@ -383,203 +462,249 @@ document.addEventListener('DOMContentLoaded', function() {
       return messageDiv;
     }
     
-    // Function to add a loading message
-    function addLoadingMessage() {
-      console.log('Adding loading message');
-      
-      if (!elements.chatMessages) {
-        console.error('Chat messages container not found');
-        return null;
-      }
-      
-      const loadingDiv = document.createElement('div');
-      loadingDiv.className = 'message assistant loading';
-      
-      const contentDiv = document.createElement('div');
-      contentDiv.className = 'message-content';
-      contentDiv.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
-      
-      loadingDiv.appendChild(contentDiv);
-      elements.chatMessages.appendChild(loadingDiv);
-      
-      // Scroll to bottom
-      elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
-      
-      return loadingDiv;
-    }
-    
     // Function to remove loading message
     function removeLoadingMessage(loadingMessage) {
-      console.log('Removing loading message');
-      
       if (loadingMessage && loadingMessage.parentNode) {
         loadingMessage.parentNode.removeChild(loadingMessage);
       }
     }
-    
-    // Initialize the chatbot with the default mode
-    setMode('general');
-    console.log('Chatbot initialization complete');
   }
   
   // Function to handle resume upload
   function initResumeHandling() {
     console.log('Initializing resume handling');
     
-    if (elements.resumeFileInput) {
-      elements.resumeFileInput.onchange = function(event) {
-        console.log('Resume file input change detected');
-        handleResumeUpload(event);
-      };
+    // Check if resume file input exists
+    if (!elements.resumeFileInput) {
+      console.error('Resume file input not found');
+      return;
     }
     
-    async function handleResumeUpload(event) {
-      console.log('Handle resume upload called');
+    // Add event listener for file selection
+    elements.resumeFileInput.onchange = function(event) {
+      handleResumeUpload(event);
+    };
+    
+    // Function to handle resume upload
+    function handleResumeUpload(event) {
       const file = event.target.files[0];
-      if (!file) {
-        console.log('No file selected');
-        return;
-      }
+      if (!file) return;
       
-      console.log('File selected:', file.name, file.type, file.size);
+      console.log(`Resume file selected: ${file.name} (${file.type})`);
       
-      // Validate file type and extension
-      const validExtensions = ['.pdf', '.doc', '.docx', '.txt'];
-      const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
-      const validFileTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'];
+      // Check file type
+      const validTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'];
+      const fileExtension = file.name.split('.').pop().toLowerCase();
       
-      if (!validExtensions.includes(fileExtension) && !validFileTypes.includes(file.type)) {
-        showErrorMessage('Invalid file type. Please upload a PDF, DOC, DOCX, or TXT file.');
+      if (!validTypes.includes(file.type) && !['pdf', 'docx', 'txt'].includes(fileExtension)) {
+        showErrorMessage('Please upload a PDF, DOCX, or TXT file.');
         return;
       }
       
       // Show loading state
-      elements.resumeUploadPrompt.classList.add('hidden');
-      elements.resumeAnalysisResults.classList.add('hidden');
-      elements.resumeLoadingIndicator.classList.remove('hidden');
+      if (elements.resumeUploadPrompt && elements.resumeAnalysisResults) {
+        elements.resumeUploadPrompt.classList.add('hidden');
+        elements.resumeAnalysisResults.classList.add('hidden');
+      }
       
-      try {
-        console.log('Starting file processing...');
-        // Read the file as text
-        const resumeText = await readFileAsText(file);
-        console.log('File processed, text length:', resumeText ? resumeText.length : 0);
+      if (elements.resumeLoadingIndicator) {
+        elements.resumeLoadingIndicator.classList.remove('hidden');
+      }
+      
+      // First, extract text from the resume
+      extractResumeText(file)
+        .then(resumeText => {
+          console.log(`Resume text extracted, length: ${resumeText.length} characters`);
+          
+          // Now analyze the resume
+          return analyzeResume(resumeText);
+        })
+        .then(analysisResult => {
+          console.log('Resume analysis complete');
+          
+          // Hide loading indicator
+          if (elements.resumeLoadingIndicator) {
+            elements.resumeLoadingIndicator.classList.add('hidden');
+          }
+          
+          // Display results
+          displayResumeAnalysis(analysisResult);
+        })
+        .catch(error => {
+          console.error('Error processing resume:', error);
+          
+          // Hide loading indicator
+          if (elements.resumeLoadingIndicator) {
+            elements.resumeLoadingIndicator.classList.add('hidden');
+          }
+          
+          // Show error message
+          if (elements.resumeUploadPrompt) {
+            elements.resumeUploadPrompt.classList.remove('hidden');
+          }
+          
+          showErrorMessage(`Error processing resume: ${error.message}`);
+        });
+    }
+    
+    // Function to extract text from resume file
+    function extractResumeText(file) {
+      return new Promise((resolve, reject) => {
+        console.log(`Extracting text from ${file.type} file`);
         
-        if (!resumeText || resumeText.trim().length < 100) {
-          console.error('Resume text too short');
-          showErrorMessage('The uploaded file appears to be empty or too short. Please upload a valid resume.');
-          elements.resumeLoadingIndicator.classList.add('hidden');
-          elements.resumeUploadPrompt.classList.remove('hidden');
-          return;
+        // Create a FormData object
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        // Send the file to the backend for text extraction
+        fetch(`${API_BASE_URL}/extract-resume-text`, {
+          method: 'POST',
+          body: formData
+        })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`Resume text extraction failed with status: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          if (data.error) {
+            throw new Error(data.error);
+          }
+          
+          if (!data.text) {
+            throw new Error('No text was extracted from the resume');
+          }
+          
+          resolve(data.text);
+        })
+        .catch(error => {
+          console.error('Error extracting resume text:', error);
+          reject(error);
+        });
+      });
+    }
+    
+    // Function to analyze resume
+    function analyzeResume(resumeText) {
+      return new Promise((resolve, reject) => {
+        console.log('Analyzing resume...');
+        
+        // Get saved jobs to extract skills
+        let extractedJobSkills = null;
+        
+        try {
+          // Try to use localStorage since chrome extension API might not be available
+          const savedJobsStr = localStorage.getItem('savedJobs');
+          if (savedJobsStr) {
+            const savedJobs = JSON.parse(savedJobsStr);
+            if (savedJobs && savedJobs.length > 0) {
+              // Extract skills from the most recent job
+              const recentJob = savedJobs[0];
+              if (recentJob.skills) {
+                extractedJobSkills = {
+                  technical_skills: recentJob.skills.filter(skill => 
+                    !['communication', 'teamwork', 'leadership', 'problem solving', 'time management']
+                      .includes(skill.toLowerCase())
+                  ),
+                  soft_skills: recentJob.skills.filter(skill => 
+                    ['communication', 'teamwork', 'leadership', 'problem solving', 'time management']
+                      .includes(skill.toLowerCase())
+                  )
+                };
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error accessing localStorage for job skills:', error);
         }
         
-        // Basic validation to check if it's a resume
-        const resumeKeywords = ['resume', 'cv', 'curriculum vitae', 'education', 'experience', 'skills', 'work', 'job', 'employment', 'qualifications'];
-        const keywordsFound = resumeKeywords.filter(keyword => resumeText.toLowerCase().includes(keyword.toLowerCase()));
-        
-        if (keywordsFound.length < 2) {
-          console.error('Document does not appear to be a resume. Keywords found:', keywordsFound);
-          showErrorMessage('The uploaded file does not appear to be a resume. Please upload a valid resume document.');
-          elements.resumeLoadingIndicator.classList.add('hidden');
-          elements.resumeUploadPrompt.classList.remove('hidden');
-          return;
-        }
-        
-        console.log('Resume validation passed, keywords found:', keywordsFound);
+        // Prepare request data
+        const requestData = {
+          resume_text: resumeText,
+          extracted_job_skills: extractedJobSkills
+        };
         
         // Send the resume text to the backend for analysis
-        const response = await fetch(`${API_BASE_URL}/analyze-resume`, {
+        fetch(`${API_BASE_URL}/analyze-resume`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({
-            resume_text: resumeText,
-            extracted_job_skills: {
-              technical_skills: [],
-              soft_skills: []
-            }
-          })
+          body: JSON.stringify(requestData)
+        })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`Resume analysis failed with status: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          if (data.error) {
+            throw new Error(data.error);
+          }
+          
+          if (!data.result) {
+            throw new Error('No analysis result was returned');
+          }
+          
+          resolve(data.result);
+        })
+        .catch(error => {
+          console.error('Error analyzing resume:', error);
+          reject(error);
         });
-        
-        if (!response.ok) {
-          throw new Error(`Server returned ${response.status}: ${response.statusText}`);
-        }
-          
-        const data = await response.json();
-        console.log('Resume analysis response:', data);
-        
-        if (data.error) {
-          throw new Error(data.error);
-        }
-        
-        // Process the skills data
-        const resumeData = data.result;
-        console.log('Resume data:', resumeData);
-        
-        // Store resume data in localStorage for reference
-        try {
-          localStorage.setItem('resumeData', JSON.stringify(resumeData));
-        } catch (error) {
-          console.error('Error storing resume data:', error);
-        }
-          
-        // Hide loading state
-        elements.resumeLoadingIndicator.classList.add('hidden');
-        elements.resumeAnalysisResults.classList.remove('hidden');
-        
-        // Clear resume skills list
-        elements.resumeSkillsList.innerHTML = '';
-        
-        // Add skills to the list
-        resumeData.present_skills.forEach(skill => {
+      });
+    }
+    
+    // Function to display resume analysis results
+    function displayResumeAnalysis(analysis) {
+      console.log('Displaying resume analysis:', analysis);
+      
+      if (!elements.resumeAnalysisResults || !elements.resumeSkillsList || !elements.skillGapsList) {
+        console.error('Resume analysis display elements not found');
+        return;
+      }
+      
+      // Show results container
+      elements.resumeAnalysisResults.classList.remove('hidden');
+      
+      // Clear previous results
+      elements.resumeSkillsList.innerHTML = '';
+      elements.skillGapsList.innerHTML = '';
+      
+      // Display present skills
+      if (analysis.present_skills && analysis.present_skills.length > 0) {
+        analysis.present_skills.forEach(skill => {
           const li = document.createElement('li');
           li.textContent = skill;
           elements.resumeSkillsList.appendChild(li);
         });
-        
-        // Clear skill gaps list
-        elements.skillGapsList.innerHTML = '';
-        
-        // Filter out any skills that are both in present_skills and missing_skills
-        // This prevents your resume skills from showing up as gaps
-        if (resumeData.present_skills && resumeData.missing_skills) {
-          // Convert present skills to lowercase for case-insensitive comparison
-          const presentSkillsLower = resumeData.present_skills.map(skill => skill.toLowerCase());
-          
-          // Filter out any missing skills that also appear in present skills
-          const filteredMissingSkills = resumeData.missing_skills.filter(skill => {
-            return !presentSkillsLower.includes(skill.toLowerCase());
-          });
-          
-          // Replace the missing skills with our filtered list
-          resumeData.missing_skills = filteredMissingSkills;
-          console.log('Filtered out skills that appeared in both lists');
-        }
-        
-        // Add skill gaps to the list if they exist after filtering
-        if (resumeData.missing_skills && resumeData.missing_skills.length > 0) {
-          resumeData.missing_skills.forEach(skill => {
-            const li = document.createElement('li');
-            li.textContent = skill;
-            elements.skillGapsList.appendChild(li);
-          });
-        } else {
+      } else {
+        const li = document.createElement('li');
+        li.textContent = 'No skills detected';
+        elements.resumeSkillsList.appendChild(li);
+      }
+      
+      // Display missing skills
+      if (analysis.missing_skills && analysis.missing_skills.length > 0) {
+        analysis.missing_skills.forEach(skill => {
           const li = document.createElement('li');
-          li.textContent = "No specific skill gaps identified.";
+          li.textContent = skill;
           elements.skillGapsList.appendChild(li);
-        }
-        
-      } catch (error) {
-        console.error('Error processing resume:', error);
-        
-        let errorMessage = 'An error occurred while analyzing your resume. Please try again.';
-        if (error.message) {
-          errorMessage = error.message;
-        }
-        
-        showErrorMessage(errorMessage);
-        elements.resumeLoadingIndicator.classList.add('hidden');
-        elements.resumeUploadPrompt.classList.remove('hidden');
+        });
+      } else {
+        const li = document.createElement('li');
+        li.textContent = 'No skill gaps detected';
+        elements.skillGapsList.appendChild(li);
+      }
+      
+      // Store analysis for project recommendations
+      localStorage.setItem('resumeAnalysis', JSON.stringify(analysis));
+      
+      // Enable analyze button if it exists
+      if (elements.analyzeBtn) {
+        elements.analyzeBtn.disabled = false;
       }
     }
   }
@@ -587,35 +712,41 @@ document.addEventListener('DOMContentLoaded', function() {
   // Function to read file as text with proper handling for different file types
   function readFileAsText(file) {
     return new Promise((resolve, reject) => {
-      console.log('Reading file:', file.name, file.type, file.size);
+      if (!file) {
+        reject(new Error('No file provided'));
+        return;
+      }
       
-      // For text files, use the FileReader API directly
+      console.log(`Reading file: ${file.name} (${file.type})`);
+      
+      // For text files, use FileReader directly
       if (file.type === 'text/plain' || file.name.toLowerCase().endsWith('.txt')) {
-        console.log('Text file detected, using FileReader');
-        const reader = new FileReader();
-        reader.onload = event => {
-          console.log('FileReader loaded text, length:', event.target.result.length);
-          resolve(event.target.result);
+        console.log('TXT file detected, using FileReader');
+        
+        const fileReader = new FileReader();
+        fileReader.onload = function() {
+          resolve(fileReader.result);
         };
-        reader.onerror = error => {
-          console.error('FileReader error:', error);
+        
+        fileReader.onerror = function(error) {
+          console.error('Error reading text file:', error);
           reject(error);
         };
-        reader.readAsText(file);
+        
+        fileReader.readAsText(file);
       }
-      // For PDF files, use backend processing directly
+      // For PDF files, use backend extraction
       else if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
-        console.log('PDF file detected, using direct FormData file upload');
+        console.log('PDF file detected, using backend extraction');
         
         // Use a promise-based approach
         const fileReader = new FileReader();
         fileReader.onload = function() {
-          // Now we'll send this to the backend
           // Create a FormData to safely upload the file
           const formData = new FormData();
           formData.append('file', file);
           
-          fetch(`${API_BASE_URL}/extract-pdf-text-direct`, {
+          fetch(`${API_BASE_URL}/extract-resume-text`, {
             method: 'POST',
             body: formData
           })
@@ -664,7 +795,7 @@ document.addEventListener('DOMContentLoaded', function() {
           const formData = new FormData();
           formData.append('file', file);
           
-          fetch(`${API_BASE_URL}/extract-docx-text-direct`, {
+          fetch(`${API_BASE_URL}/extract-resume-text`, {
             method: 'POST',
             body: formData
           })
@@ -734,14 +865,317 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
   
-  // Initialize elements first
-  initializeElements();
+  // Function to initialize and display saved jobs
+  function initSavedJobsDisplay() {
+    console.log('Initializing saved jobs display');
+    
+    if (!elements.savedJobsList) {
+      console.warn('Saved jobs list element not found');
+      return;
+    }
+    
+    // Function to display jobs
+    function displayJobs(jobs) {
+      console.log(`Displaying ${jobs.length} saved jobs`);
+      
+      // Clear current list
+      elements.savedJobsList.innerHTML = '';
+      
+      if (jobs.length === 0) {
+        // Show empty state
+        const emptyState = document.createElement('div');
+        emptyState.className = 'empty-state';
+        emptyState.innerHTML = '<p>No jobs saved yet. Use the extension to save job descriptions.</p>';
+        elements.savedJobsList.appendChild(emptyState);
+        
+        // Update stats
+        if (elements.jobsSavedCount) elements.jobsSavedCount.textContent = '0';
+        if (elements.uniqueSkillsCount) elements.uniqueSkillsCount.textContent = '0';
+        if (elements.topSkill) elements.topSkill.textContent = '-';
+        
+        return;
+      }
+      
+      // Update job count
+      if (elements.jobsSavedCount) {
+        elements.jobsSavedCount.textContent = jobs.length.toString();
+      }
+      
+      // Calculate skill statistics
+      const skillCounts = {};
+      let totalSkills = 0;
+      
+      jobs.forEach(job => {
+        if (job.skills && Array.isArray(job.skills)) {
+          job.skills.forEach(skill => {
+            skillCounts[skill] = (skillCounts[skill] || 0) + 1;
+            totalSkills++;
+          });
+        }
+      });
+      
+      // Get unique skills count
+      const uniqueSkillsCount = Object.keys(skillCounts).length;
+      if (elements.uniqueSkillsCount) {
+        elements.uniqueSkillsCount.textContent = uniqueSkillsCount.toString();
+      }
+      
+      // Find top skill
+      let topSkill = '-';
+      let topCount = 0;
+      
+      Object.entries(skillCounts).forEach(([skill, count]) => {
+        if (count > topCount) {
+          topSkill = skill;
+          topCount = count;
+        }
+      });
+      
+      if (elements.topSkill) {
+        elements.topSkill.textContent = topSkill;
+      }
+      
+      // Populate job roles filter
+      if (elements.jobRoleFilter) {
+        // Get unique roles
+        const roles = [...new Set(jobs.map(job => job.title))].filter(Boolean);
+        
+        // Clear current options (keeping the "All Roles" option)
+        while (elements.jobRoleFilter.options.length > 1) {
+          elements.jobRoleFilter.remove(1);
+        }
+        
+        // Add role options
+        roles.forEach(role => {
+          const option = document.createElement('option');
+          option.value = role;
+          option.textContent = role;
+          elements.jobRoleFilter.appendChild(option);
+        });
+      }
+      
+      // Display each job
+      jobs.forEach(job => {
+        const jobCard = document.createElement('div');
+        jobCard.className = 'job-card';
+        jobCard.dataset.jobId = job.id || '';
+        
+        const title = document.createElement('h3');
+        title.className = 'job-title';
+        title.textContent = job.title || 'Untitled Position';
+        
+        const company = document.createElement('p');
+        company.className = 'company-name';
+        company.textContent = job.company || 'Unknown Company';
+        
+        const skillsContainer = document.createElement('div');
+        skillsContainer.className = 'skills-preview';
+        
+        // Display up to 3 skills
+        const skillsToShow = job.skills && job.skills.length > 0 
+          ? job.skills.slice(0, 3) 
+          : ['No skills listed'];
+          
+        skillsToShow.forEach(skill => {
+          const skillBadge = document.createElement('span');
+          skillBadge.className = 'skill-badge';
+          skillBadge.textContent = skill;
+          skillsContainer.appendChild(skillBadge);
+        });
+        
+        // Add skill count if there are more
+        if (job.skills && job.skills.length > 3) {
+          const moreSkills = document.createElement('span');
+          moreSkills.className = 'more-skills';
+          moreSkills.textContent = `+${job.skills.length - 3} more`;
+          skillsContainer.appendChild(moreSkills);
+        }
+        
+        // Assemble job card
+        jobCard.appendChild(title);
+        jobCard.appendChild(company);
+        jobCard.appendChild(skillsContainer);
+        
+        // Add click handler to show details
+        jobCard.addEventListener('click', () => {
+          showJobDetails(job);
+        });
+        
+        elements.savedJobsList.appendChild(jobCard);
+      });
+      
+      // Add search functionality
+      if (elements.jobSearchInput) {
+        elements.jobSearchInput.addEventListener('input', filterJobs);
+      }
+      
+      // Add filter functionality
+      if (elements.jobRoleFilter) {
+        elements.jobRoleFilter.addEventListener('change', filterJobs);
+      }
+      
+      // Function to filter jobs based on search and role filter
+      function filterJobs() {
+        const searchTerm = elements.jobSearchInput ? elements.jobSearchInput.value.toLowerCase() : '';
+        const roleFilter = elements.jobRoleFilter ? elements.jobRoleFilter.value : '';
+        
+        const jobCards = elements.savedJobsList.querySelectorAll('.job-card');
+        
+        jobCards.forEach(card => {
+          const job = jobs.find(j => j.id === card.dataset.jobId);
+          if (!job) return;
+          
+          const titleMatch = job.title && job.title.toLowerCase().includes(searchTerm);
+          const companyMatch = job.company && job.company.toLowerCase().includes(searchTerm);
+          const skillsMatch = job.skills && job.skills.some(skill => 
+            skill.toLowerCase().includes(searchTerm)
+          );
+          
+          const matchesSearch = searchTerm === '' || titleMatch || companyMatch || skillsMatch;
+          const matchesRole = roleFilter === '' || job.title === roleFilter;
+          
+          card.style.display = matchesSearch && matchesRole ? 'block' : 'none';
+        });
+      }
+    }
+    
+    // Function to show job details in modal
+    function showJobDetails(job) {
+      if (!elements.jobModal) {
+        console.warn('Job modal element not found');
+        return;
+      }
+      
+      // Populate modal with job details
+      if (elements.modalJobTitle) {
+        elements.modalJobTitle.textContent = job.title || 'Untitled Position';
+      }
+      
+      if (elements.modalCompanyName) {
+        elements.modalCompanyName.textContent = job.company || 'Unknown Company';
+      }
+      
+      // Display skills
+      if (elements.modalSkillsList) {
+        elements.modalSkillsList.innerHTML = '';
+        
+        if (job.skills && job.skills.length > 0) {
+          job.skills.forEach(skill => {
+            const li = document.createElement('li');
+            li.textContent = skill;
+            elements.modalSkillsList.appendChild(li);
+          });
+        } else {
+          const li = document.createElement('li');
+          li.textContent = 'No skills listed';
+          elements.modalSkillsList.appendChild(li);
+        }
+      }
+      
+      // Display responsibilities
+      if (elements.modalResponsibilitiesList) {
+        elements.modalResponsibilitiesList.innerHTML = '';
+        
+        if (job.responsibilities && job.responsibilities.length > 0) {
+          job.responsibilities.forEach(resp => {
+            const li = document.createElement('li');
+            li.textContent = resp;
+            elements.modalResponsibilitiesList.appendChild(li);
+          });
+        } else {
+          const li = document.createElement('li');
+          li.textContent = 'No responsibilities listed';
+          elements.modalResponsibilitiesList.appendChild(li);
+        }
+      }
+      
+      // Set up delete button
+      if (elements.deleteJobBtn) {
+        elements.deleteJobBtn.onclick = function() {
+          deleteJob(job.id);
+          elements.jobModal.style.display = 'none';
+        };
+      }
+      
+      // Set up close button
+      if (elements.closeModal) {
+        elements.closeModal.onclick = function() {
+          elements.jobModal.style.display = 'none';
+        };
+      }
+      
+      // Show modal
+      elements.jobModal.style.display = 'block';
+      
+      // Close modal when clicking outside
+      window.onclick = function(event) {
+        if (event.target === elements.jobModal) {
+          elements.jobModal.style.display = 'none';
+        }
+      };
+    }
+    
+    // Function to delete a job
+    function deleteJob(jobId) {
+      console.log(`Deleting job with ID: ${jobId}`);
+      
+      if (typeof chrome !== 'undefined' && chrome.storage) {
+        // Use Chrome storage API
+        chrome.storage.local.get(['savedJobs'], function(result) {
+          const savedJobs = result.savedJobs || [];
+          const updatedJobs = savedJobs.filter(job => job.id !== jobId);
+          
+          chrome.storage.local.set({savedJobs: updatedJobs}, function() {
+            console.log('Job deleted from Chrome storage');
+            displayJobs(updatedJobs);
+          });
+        });
+      } else {
+        // Use localStorage as fallback
+        try {
+          const savedJobsStr = localStorage.getItem('savedJobs');
+          const savedJobs = savedJobsStr ? JSON.parse(savedJobsStr) : [];
+          const updatedJobs = savedJobs.filter(job => job.id !== jobId);
+          
+          localStorage.setItem('savedJobs', JSON.stringify(updatedJobs));
+          console.log('Job deleted from localStorage');
+          displayJobs(updatedJobs);
+        } catch (error) {
+          console.error('Error deleting job:', error);
+        }
+      }
+    }
+    
+    // Load saved jobs from storage
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      // Use Chrome storage API
+      chrome.storage.local.get(['savedJobs'], function(result) {
+        const savedJobs = result.savedJobs || [];
+        console.log(`Loaded ${savedJobs.length} jobs from Chrome storage`);
+        displayJobs(savedJobs);
+      });
+    } else {
+      // Use localStorage as fallback
+      try {
+        const savedJobsStr = localStorage.getItem('savedJobs');
+        const savedJobs = savedJobsStr ? JSON.parse(savedJobsStr) : [];
+        console.log(`Loaded ${savedJobs.length} jobs from localStorage`);
+        displayJobs(savedJobs);
+      } catch (error) {
+        console.error('Error loading saved jobs:', error);
+        displayJobs([]);
+      }
+    }
+  }
   
   // Initialize the chatbot
   initChatbot();
   
   // Initialize resume handling
   initResumeHandling();
+  
+  // Initialize saved jobs display
+  initSavedJobsDisplay();
   
   console.log('Dashboard initialization complete');
 });

@@ -3,7 +3,7 @@ document.addEventListener('DOMContentLoaded', function() {
   console.log('Dashboard script loaded');
   
   // API URL for backend
-  const API_BASE_URL = "http://localhost:8000";
+  const API_BASE_URL = "http://localhost:8001";
   
   // Generate a unique user ID or retrieve from storage
   let userId;

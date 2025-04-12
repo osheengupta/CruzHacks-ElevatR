@@ -823,13 +823,9 @@ async def analyze_resume(request: ResumeAnalysisRequest):
         
         return {"result": result}
     except Exception as e:
-<<<<<<< HEAD
-        print("❌ Error in analyze_resume endpoint:")
+        print(f"Error in analyze_resume: {str(e)}")
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
-=======
-        print(f"Error in analyze_resume: {str(e)}")
-        return {"error": f"Error analyzing resume: {str(e)}"}
 
 def is_valid_resume(text: str) -> bool:
     """
@@ -887,7 +883,6 @@ def is_valid_resume(text: str) -> bool:
     print(f"Resume validation result: {is_valid} (Key section: {has_key_section}, Enough sections: {enough_sections})")
     
     return is_valid
->>>>>>> origin/resume-analysis-features
 
 @app.post("/recommend-projects")
 async def recommend_projects(request: ProjectRecommendationRequest):
