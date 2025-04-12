@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JobSkillTracker Dashboard (Fixed)</title>
+  <link rel="stylesheet" href="dashboard.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Using the fixed JavaScript file -->
+  <script src="dashboard-fixed.js"></script>
+  <style>
+    /* Additional styles for debugging */
+    .debug-info {
+      background-color: #f8f9fa;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      padding: 10px;
+      margin: 20px 0;
+      font-family: monospace;
+    }
+    
+    .error-message {
+      color: #dc3545;
+      background-color: #f8d7da;
+      border: 1px solid #f5c6cb;
+      border-radius: 5px;
+      padding: 10px;
+      margin: 10px 0;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-content">
+      <h1>JobSkillTracker Dashboard (Fixed Version)</h1>
+      <div class="header-actions">
+        <label for="resumeFileInput" class="primary-btn" style="cursor: pointer;">Upload Resume</label>
+        <input type="file" id="resumeFileInput" accept=".pdf,.doc,.docx,.txt" style="display: inline-block; margin-left: 10px;">
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="dashboard-stats">
+      <div class="stat-card">
+        <h3>Jobs Saved</h3>
+        <p id="jobsSavedCount">0</p>
+      </div>
+      <div class="stat-card">
+        <h3>Unique Skills</h3>
+        <p id="uniqueSkillsCount">0</p>
+      </div>
+      <div class="stat-card">
+        <h3>Top Skill</h3>
+        <p id="topSkill">-</p>
+      </div>
+    </div>
+
+    <div class="dashboard-grid">
+      <section class="dashboard-section ai-chatbot-section">
+        <h2>AI Learning Assistant</h2>
+        <div class="chat-mode-selector">
+          <button id="generalChatBtn" class="chat-mode-btn active">General Chat</button>
+          <button id="paperSummaryBtn" class="chat-mode-btn">Summarize Paper</button>
+          <button id="skillRoadmapBtn" class="chat-mode-btn">Skill Roadmap</button>
+        </div>
+        
+        <!-- Paper URL input (hidden by default) -->
+        <div id="paperUrlContainer" class="mode-specific-input hidden">
+          <div class="paper-input-options">
+            <div class="option-tabs">
+              <button id="urlTabBtn" class="option-tab active">Enter URL</button>
+              <button id="uploadTabBtn" class="option-tab">Upload File</button>
+            </div>
+            
+            <div id="urlInputSection" class="input-section">
+              <input type="text" id="paperUrlInput" placeholder="Enter paper URL to summarize..." />
+            </div>
+            
+            <div id="fileUploadSection" class="input-section hidden">
+              <div class="file-upload-container">
+                <label for="paperFileInput" class="file-upload-label">
+                  <span id="fileUploadText">Choose a file or drag it here</span>
+                  <span class="upload-icon">📄</span>
+                </label>
+                <input type="file" id="paperFileInput" accept=".pdf,.docx,.txt" />
+              </div>
+              <div id="uploadedFileName" class="uploaded-file-name hidden"></div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="chat-container">
+          <div id="chatMessages" class="chat-messages">
+            <div class="message assistant">
+              <div class="message-content">
+                <p>Hi there! I'm your AI learning assistant. I can help you learn new things, summarize research papers, or create personalized learning roadmaps. How can I help you today?</p>
+              </div>
+            </div>
+          </div>
+          
+          <div class="chat-input-container">
+            <textarea id="chatInput" placeholder="Type your message here..."></textarea>
+            <button id="sendMessageBtn" class="primary-btn">Send</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="dashboard-section resume-analysis-section">
+        <h2>Resume Analysis</h2>
+        <div id="resumeUploadPrompt">
+          <p>Upload your resume to get personalized skill gap analysis and project recommendations.</p>
+          <label for="resumeFileInput" class="secondary-btn" style="cursor: pointer; display: inline-block;">Upload Resume</label>
+        </div>
+        <div class="resume-loading-indicator hidden">
+          <div class="loader"></div>
+          <p>Analyzing your resume...</p>
+        </div>
+        <div id="resumeAnalysisResults" class="hidden">
+          <div class="resume-skills">
+            <h3>Skills in Your Resume</h3>
+            <ul id="resumeSkillsList" class="skills-list">
+              <!-- Resume skills will be populated here -->
+            </ul>
+          </div>
+          <div class="skill-gaps">
+            <h3>Skill Gaps</h3>
+            <ul id="skillGapsList" class="skills-list highlight">
+              <!-- Skill gaps will be populated here -->
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="dashboard-section recommendations-section">
+        <h2>Project Recommendations</h2>
+        <button id="analyzeBtn" class="primary-btn">Analyze & Get Recommendations</button>
+        <div id="projectRecommendations" class="hidden">
+          <div class="loading-indicator hidden">
+            <div class="loader"></div>
+            <p>Generating personalized project recommendations...</p>
+          </div>
+          <div id="recommendationsList">
+            <!-- Project recommendations will be populated here -->
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- Debug console for visibility of events -->
+  <div class="debug-info">
+    <h3>Debug Console</h3>
+    <p>Check your browser console (F12) for detailed logs of button events.</p>
+    <div id="debugOutput"></div>
+  </div>
+
+  <script>
+    // Additional debug script to show events in the UI
+    document.addEventListener('DOMContentLoaded', function() {
+      // Add visible debug output
+      const debugOutput = document.getElementById('debugOutput');
+      
+      // Override console.log to also display in the debug area
+      const originalConsoleLog = console.log;
+      console.log = function() {
+        originalConsoleLog.apply(console, arguments);
+        
+        const message = Array.from(arguments).join(' ');
+        const logEl = document.createElement('div');
+        logEl.style.borderBottom = '1px solid #eee';
+        logEl.style.padding = '5px 0';
+        logEl.innerHTML = `<span style="color:#0366d6">${new Date().toLocaleTimeString()}</span>: ${message}`;
+        
+        debugOutput.appendChild(logEl);
+        debugOutput.scrollTop = debugOutput.scrollHeight;
+      };
+    });
+  </script>
+</body>
+</html>

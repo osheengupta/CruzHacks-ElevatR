@@ -1,0 +1,1898 @@
+document.addEventListener('DOMContentLoaded', function() {
+  // API URL for backend
+  const API_BASE_URL = "http://localhost:8000";
+  
+  // Generate a unique user ID or retrieve from storage
+  let userId;
+  
+  // Check if chrome.storage is available (Chrome extension environment)
+  if (typeof chrome !== 'undefined' && chrome.storage) {
+    chrome.storage.local.get(['userId'], function(result) {
+      if (result.userId) {
+        userId = result.userId;
+      } else {
+        userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        chrome.storage.local.set({userId: userId});
+      }
+      console.log('User ID:', userId);
+      
+      // Initialize dashboard
+      console.log('Dashboard initialized with user ID:', userId);
+    });
+  } else {
+    // For non-extension environment, use localStorage
+    userId = localStorage.getItem('userId');
+    if (!userId) {
+      userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      localStorage.setItem('userId', userId);
+    }
+    console.log('User ID (local storage):', userId);
+    console.log('Dashboard initialized with user ID:', userId);
+  }
+  
+  // Add console logs to debug element access
+  console.log('DOM Elements Check:');
+  setTimeout(() => {
+    console.log('generalChatBtn:', document.getElementById('generalChatBtn'));
+    console.log('paperSummaryBtn:', document.getElementById('paperSummaryBtn'));
+    console.log('skillRoadmapBtn:', document.getElementById('skillRoadmapBtn'));
+    console.log('sendMessageBtn:', document.getElementById('sendMessageBtn'));
+    console.log('resumeFileInput:', document.getElementById('resumeFileInput'));
+  }, 500);
+  
+  // DOM Elements
+  const jobsSavedCount = document.getElementById('jobsSavedCount');
+  const uniqueSkillsCount = document.getElementById('uniqueSkillsCount');
+  const topSkill = document.getElementById('topSkill');
+  const savedJobsList = document.getElementById('savedJobsList');
+  const jobSearchInput = document.getElementById('jobSearchInput');
+  const jobRoleFilter = document.getElementById('jobRoleFilter');
+  
+  // AI Chatbot Elements
+  const chatMessages = document.getElementById('chatMessages');
+  const chatInput = document.getElementById('chatInput');
+  const sendMessageBtn = document.getElementById('sendMessageBtn');
+  const generalChatBtn = document.getElementById('generalChatBtn');
+  const paperSummaryBtn = document.getElementById('paperSummaryBtn');
+  const skillRoadmapBtn = document.getElementById('skillRoadmapBtn');
+  const paperUrlContainer = document.getElementById('paperUrlContainer');
+  const skillSelectionContainer = document.getElementById('skillSelectionContainer');
+  const paperUrlInput = document.getElementById('paperUrlInput');
+  const targetSkillInput = document.getElementById('targetSkillInput');
+  
+  // Paper upload elements
+  const urlTabBtn = document.getElementById('urlTabBtn');
+  const uploadTabBtn = document.getElementById('uploadTabBtn');
+  const urlInputSection = document.getElementById('urlInputSection');
+  const fileUploadSection = document.getElementById('fileUploadSection');
+  const paperFileInput = document.getElementById('paperFileInput');
+  const uploadedFileName = document.getElementById('uploadedFileName');
+  const fileUploadText = document.getElementById('fileUploadText');
+  
+  // Paper upload variables - making this a global variable to ensure it's accessible across the application
+  window.uploadedPaperText = null;
+  const uploadResumeBtn = document.getElementById('uploadResumeBtn');
+  const resumeFileInput = document.getElementById('resumeFileInput');
+  const promptUploadBtn = document.getElementById('promptUploadBtn');
+  const resumeUploadPrompt = document.getElementById('resumeUploadPrompt');
+  const resumeAnalysisResults = document.getElementById('resumeAnalysisResults');
+  const resumeSkillsList = document.getElementById('resumeSkillsList');
+  const skillGapsList = document.getElementById('skillGapsList');
+  const analyzeBtn = document.getElementById('analyzeBtn');
+  const projectRecommendations = document.getElementById('projectRecommendations');
+  const recommendationsList = document.getElementById('recommendationsList');
+  const loadingIndicator = document.querySelector('.loading-indicator');
+  
+  // Debug element existence
+  console.log('Upload button exists:', !!uploadResumeBtn);
+  console.log('Resume file input exists:', !!resumeFileInput);
+  console.log('Prompt upload button exists:', !!promptUploadBtn);
+  
+  // Modal elements
+  const jobModal = document.getElementById('jobModal');
+  const modalJobTitle = document.getElementById('modalJobTitle');
+  const modalCompanyName = document.getElementById('modalCompanyName');
+  const modalSkillsList = document.getElementById('modalSkillsList');
+  const modalResponsibilitiesList = document.getElementById('modalResponsibilitiesList');
+  const closeModal = document.querySelector('.close-modal');
+  const deleteJobBtn = document.getElementById('deleteJobBtn');
+  
+  // Chart instance
+  let skillsChart;
+  
+  // Current job being viewed in modal
+  let currentJobId;
+  
+  // Resume data
+  let resumeData = null;
+  let extractedJobSkills = null;
+  
+  // Load and display saved jobs
+  loadSavedJobs();
+  
+  // Initialize AI chatbot
+  initChatbot();
+  
+  // Event listeners
+  jobSearchInput.addEventListener('input', filterJobs);
+  jobRoleFilter.addEventListener('change', filterJobs);
+  // Fix for upload resume button
+  if (uploadResumeBtn) {
+    uploadResumeBtn.onclick = function() {
+      console.log('Upload resume button clicked (direct)');
+      if (resumeFileInput) {
+        resumeFileInput.click();
+      } else {
+        console.error('Resume file input element not found');
+      }
+    };
+  } else {
+    console.error('Upload resume button not found');
+  }
+  
+  // Fix for prompt upload button
+  if (promptUploadBtn) {
+    promptUploadBtn.onclick = function() {
+      console.log('Prompt upload button clicked (direct)');
+      if (resumeFileInput) {
+        resumeFileInput.click();
+      } else {
+        console.error('Resume file input element not found');
+      }
+    };
+  } else {
+    console.error('Prompt upload button not found');
+  }
+  // Fix for resume file input change event
+  if (resumeFileInput) {
+    // Use addEventListener instead of onchange for better compatibility
+    resumeFileInput.addEventListener('change', function(event) {
+      console.log('Resume file input change event (addEventListener)');
+      handleResumeUpload(event);
+    });
+    console.log('Resume file input event listener added successfully');
+  } else {
+    console.error('Resume file input element not found');
+  }
+  analyzeBtn.addEventListener('click', generateRecommendations);
+  closeModal.addEventListener('click', () => jobModal.style.display = 'none');
+  deleteJobBtn.addEventListener('click', deleteCurrentJob);
+  
+  // Close modal when clicking outside
+  window.addEventListener('click', function(event) {
+    if (event.target === jobModal) {
+      jobModal.style.display = 'none';
+    }
+  });
+  
+  // Function to load saved jobs from storage
+  function loadSavedJobs() {
+    console.log('Loading saved jobs and updating skills...');
+    chrome.storage.local.get(['savedJobs', 'skillFrequency'], function(data) {
+      const jobs = data.savedJobs || [];
+      console.log(`Found ${jobs.length} saved jobs`);
+      
+      // Get the stored skill frequency or calculate it if not available
+      let skillFreq = data.skillFrequency || {};
+      console.log('Retrieved skill frequency from storage:', skillFreq);
+      
+      // If skillFrequency is empty but we have jobs, recalculate it
+      if (Object.keys(skillFreq).length === 0 && jobs.length > 0) {
+        console.log('No skill frequency data found, recalculating...');
+        let totalSkillsFound = 0;
+        
+        // Process all saved jobs to count skill frequencies
+        jobs.forEach((job, index) => {
+          console.log(`Processing job ${index + 1}: ${job.title}`);
+          const skills = job.skills || [];
+          console.log(`Found ${skills.length} skills in this job`);
+          
+          skills.forEach(skill => {
+            const skillName = typeof skill === 'string' ? skill : skill.name;
+            console.log(`Adding skill: ${skillName}`);
+            skillFreq[skillName] = (skillFreq[skillName] || 0) + 1;
+            totalSkillsFound++;
+          });
+        });
+        
+        console.log('Skill frequency calculated:', skillFreq);
+        console.log(`Total skills found: ${totalSkillsFound}, Unique skills: ${Object.keys(skillFreq).length}`);
+        
+        // Save updated skill frequency to storage
+        chrome.storage.local.set({skillFrequency: skillFreq}, function() {
+          console.log('Skill frequency saved to storage');
+        });
+      }
+      
+      // Update stats in the UI
+      jobsSavedCount.textContent = jobs.length;
+      
+      const uniqueSkills = Object.keys(skillFreq);
+      uniqueSkillsCount.textContent = uniqueSkills.length;
+      console.log(`Updating unique skills count to: ${uniqueSkills.length}`);
+      
+      // Find top skill
+      let maxFreq = 0;
+      let maxSkill = '-';
+      for (const skill in skillFreq) {
+        if (skillFreq[skill] > maxFreq) {
+          maxFreq = skillFreq[skill];
+          maxSkill = skill;
+        }
+      }
+      console.log(`Top skill identified: ${maxSkill} (frequency: ${maxFreq})`);
+      topSkill.textContent = maxSkill;
+      
+      // Clear jobs list
+      savedJobsList.innerHTML = '';
+      
+      if (jobs.length === 0) {
+        // Show empty state
+        const emptyState = document.createElement('div');
+        emptyState.className = 'empty-state';
+        emptyState.innerHTML = '<p>No jobs saved yet. Use the extension to save job descriptions.</p>';
+        savedJobsList.appendChild(emptyState);
+      } else {
+        // Populate jobs list
+        jobs.forEach(job => {
+          const jobCard = createJobCard(job);
+          savedJobsList.appendChild(jobCard);
+        });
+        
+        // Populate job role filter
+        populateJobRoleFilter(jobs);
+      }
+      
+      // Update skills analysis
+      updateSkillsAnalysis(skillFreq);
+      
+      // Store extracted job skills for resume analysis
+      extractedJobSkills = {
+        technical_skills: [],
+        soft_skills: [],
+        other_requirements: []
+      };
+      
+      // Collect all skills from saved jobs
+      jobs.forEach(job => {
+        const skills = job.skills || [];
+        skills.forEach(skill => {
+          const skillName = typeof skill === 'string' ? skill : skill.name;
+          const skillType = typeof skill === 'string' ? 'technical' : skill.type;
+          
+          if (skillType === 'technical') {
+            if (!extractedJobSkills.technical_skills.includes(skillName)) {
+              extractedJobSkills.technical_skills.push(skillName);
+            }
+          } else if (skillType === 'soft') {
+            if (!extractedJobSkills.soft_skills.includes(skillName)) {
+              extractedJobSkills.soft_skills.push(skillName);
+            }
+          }
+        });
+      });
+    });
+  }
+  
+  // Function to create a job card
+  function createJobCard(job) {
+    const jobCard = document.createElement('div');
+    jobCard.className = 'job-card';
+    jobCard.dataset.jobId = job.id;
+    
+    const title = document.createElement('h3');
+    title.textContent = job.title;
+    
+    const company = document.createElement('p');
+    company.textContent = job.company;
+    
+    const date = document.createElement('p');
+    date.textContent = new Date(job.dateAdded).toLocaleDateString();
+    
+    const skillsPreview = document.createElement('div');
+    skillsPreview.className = 'skills-preview';
+    
+    // Add top 3 skills
+    const topSkills = job.skills.slice(0, 3);
+    topSkills.forEach(skill => {
+      const skillTag = document.createElement('span');
+      skillTag.className = 'skill-tag';
+      skillTag.textContent = typeof skill === 'string' ? skill : skill.name;
+      skillsPreview.appendChild(skillTag);
+    });
+    
+    // Add event listener to open modal
+    jobCard.addEventListener('click', () => openJobModal(job));
+    
+    // Append elements to job card
+    jobCard.appendChild(title);
+    jobCard.appendChild(company);
+    jobCard.appendChild(date);
+    jobCard.appendChild(skillsPreview);
+    
+    return jobCard;
+  }
+  
+  // Function to populate job role filter
+  function populateJobRoleFilter(jobs) {
+    // Clear existing options except the first one
+    while (jobRoleFilter.options.length > 1) {
+      jobRoleFilter.remove(1);
+    }
+    
+    // Get unique job titles
+    const jobTitles = [...new Set(jobs.map(job => job.title))];
+    
+    // Add options
+    jobTitles.forEach(title => {
+      const option = document.createElement('option');
+      option.value = title;
+      option.textContent = title;
+      jobRoleFilter.appendChild(option);
+    });
+  }
+  
+  // Function to filter jobs
+  function filterJobs() {
+    const searchTerm = jobSearchInput.value.toLowerCase();
+    const roleFilter = jobRoleFilter.value;
+    
+    chrome.storage.local.get({savedJobs: []}, function(data) {
+      const jobs = data.savedJobs;
+      
+      // Clear jobs list
+      savedJobsList.innerHTML = '';
+      
+      // Filter jobs
+      const filteredJobs = jobs.filter(job => {
+        const matchesSearch = 
+          job.title.toLowerCase().includes(searchTerm) || 
+          job.company.toLowerCase().includes(searchTerm);
+        
+        const matchesRole = roleFilter === '' || job.title === roleFilter;
+        
+        return matchesSearch && matchesRole;
+      });
+      
+      if (filteredJobs.length === 0) {
+        // Show empty state
+        const emptyState = document.createElement('div');
+        emptyState.className = 'empty-state';
+        emptyState.innerHTML = '<p>No jobs match your filters.</p>';
+        savedJobsList.appendChild(emptyState);
+      } else {
+        // Populate jobs list
+        filteredJobs.forEach(job => {
+          const jobCard = createJobCard(job);
+          savedJobsList.appendChild(jobCard);
+        });
+      }
+    });
+  }
+  
+  // Function to initialize the AI chatbot
+  function initChatbot() {
+    console.log('Initializing chatbot...');
+    
+    // Use the global variables instead of redefining them
+    console.log('Checking global DOM elements:');
+    console.log('generalChatBtn:', generalChatBtn);
+    console.log('paperSummaryBtn:', paperSummaryBtn);
+    console.log('skillRoadmapBtn:', skillRoadmapBtn);
+    console.log('sendMessageBtn:', sendMessageBtn);
+    
+    // Check if elements exist
+    console.log('Chatbot buttons found:', {
+      generalChatBtn: !!generalChatBtn,
+      paperSummaryBtn: !!paperSummaryBtn,
+      skillRoadmapBtn: !!skillRoadmapBtn,
+      sendMessageBtn: !!sendMessageBtn
+    });
+    
+    // Current chat mode
+    let currentMode = 'general';
+    
+    // Paper input mode (url or file)
+    let paperInputMode = 'url';
+    
+    // Chat history
+    let chatHistory = [];
+    
+    // Remove any existing event listeners (to prevent duplicates)
+    if (generalChatBtn) {
+      // Clone and replace to remove all event listeners
+      const newGeneralChatBtn = generalChatBtn.cloneNode(true);
+      generalChatBtn.parentNode.replaceChild(newGeneralChatBtn, generalChatBtn);
+      // Re-assign the global variable
+      window.generalChatBtn = newGeneralChatBtn;
+      
+      // Add new event listener
+      newGeneralChatBtn.addEventListener('click', function() {
+        console.log('General chat button clicked');
+        setMode('general');
+      });
+    }
+    
+    if (paperSummaryBtn) {
+      // Clone and replace to remove all event listeners
+      const newPaperSummaryBtn = paperSummaryBtn.cloneNode(true);
+      paperSummaryBtn.parentNode.replaceChild(newPaperSummaryBtn, paperSummaryBtn);
+      // Re-assign the global variable
+      window.paperSummaryBtn = newPaperSummaryBtn;
+      
+      // Add new event listener
+      newPaperSummaryBtn.addEventListener('click', function() {
+        console.log('Paper summary button clicked');
+        setMode('paper_summary');
+      });
+    }
+    
+    if (skillRoadmapBtn) {
+      // Clone and replace to remove all event listeners
+      const newSkillRoadmapBtn = skillRoadmapBtn.cloneNode(true);
+      skillRoadmapBtn.parentNode.replaceChild(newSkillRoadmapBtn, skillRoadmapBtn);
+      // Re-assign the global variable
+      window.skillRoadmapBtn = newSkillRoadmapBtn;
+      
+      // Add new event listener
+      newSkillRoadmapBtn.addEventListener('click', function() {
+        console.log('Skill roadmap button clicked');
+        setMode('roadmap');
+      });
+    }
+    
+    // Event listeners for paper input options - with error handling
+    if (urlTabBtn) {
+      // Clone and replace to remove all event listeners
+      const newUrlTabBtn = urlTabBtn.cloneNode(true);
+      urlTabBtn.parentNode.replaceChild(newUrlTabBtn, urlTabBtn);
+      // Re-assign the global variable
+      window.urlTabBtn = newUrlTabBtn;
+      
+      // Add new event listener
+      newUrlTabBtn.addEventListener('click', function() {
+        console.log('URL tab button clicked');
+        setPaperInputMode('url');
+      });
+    }
+    
+    if (uploadTabBtn) {
+      // Clone and replace to remove all event listeners
+      const newUploadTabBtn = uploadTabBtn.cloneNode(true);
+      uploadTabBtn.parentNode.replaceChild(newUploadTabBtn, uploadTabBtn);
+      // Re-assign the global variable
+      window.uploadTabBtn = newUploadTabBtn;
+      
+      // Add new event listener
+      newUploadTabBtn.addEventListener('click', function() {
+        console.log('Upload tab button clicked');
+        setPaperInputMode('file');
+      });
+    }
+    
+    // Event listener for file upload - with error handling
+    if (paperFileInput) {
+      // Clone and replace to remove all event listeners
+      const newPaperFileInput = paperFileInput.cloneNode(true);
+      paperFileInput.parentNode.replaceChild(newPaperFileInput, paperFileInput);
+      // Re-assign the global variable
+      window.paperFileInput = newPaperFileInput;
+      
+      // Add new event listener
+      newPaperFileInput.addEventListener('change', function(event) {
+        console.log('Paper file input change event');
+        handlePaperFileUpload(event);
+      });
+    }
+    
+    // Function to set paper input mode (url or file)
+    function setPaperInputMode(mode) {
+      console.log('Setting paper input mode to:', mode);
+      paperInputMode = mode;
+      
+      // Get fresh references to DOM elements
+      const urlTab = document.getElementById('urlTabBtn');
+      const uploadTab = document.getElementById('uploadTabBtn');
+      const urlSection = document.getElementById('urlInputSection');
+      const fileSection = document.getElementById('fileUploadSection');
+      
+      // Update active tab with error handling
+      if (urlTab) urlTab.classList.toggle('active', mode === 'url');
+      if (uploadTab) uploadTab.classList.toggle('active', mode === 'file');
+      
+      // Show/hide appropriate input section with error handling
+      if (urlSection) urlSection.classList.toggle('hidden', mode !== 'url');
+      if (fileSection) fileSection.classList.toggle('hidden', mode !== 'file');
+      
+      console.log('Paper input mode updated successfully');
+    }
+    
+    // Function to handle paper file upload
+    async function handlePaperFileUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      
+      // Update UI to show the selected file
+      uploadedFileName.textContent = file.name;
+      uploadedFileName.classList.remove('hidden');
+      fileUploadText.textContent = 'Change file';
+      
+      // Show loading state
+      const originalText = uploadedFileName.textContent;
+      uploadedFileName.textContent = 'Processing file...';
+      
+      try {
+        // Create a FormData object to send the file
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        // Send the file to the backend
+        const response = await fetch(`${API_BASE_URL}/upload-paper`, {
+          method: 'POST',
+          body: formData
+        });
+        
+        const data = await response.json();
+        
+        // Handle error
+        if (data.error) {
+          showErrorMessage(data.error);
+          uploadedFileName.textContent = originalText;
+          return;
+        }
+        
+        // Store the extracted text globally to ensure it's accessible
+        window.uploadedPaperText = data.paper_text;
+        console.log('Paper text extracted:', window.uploadedPaperText ? window.uploadedPaperText.substring(0, 100) + '...' : 'No text extracted');
+        
+        // Update UI
+        uploadedFileName.textContent = originalText + ' (Processed)';
+      } catch (error) {
+        console.error('Error uploading paper:', error);
+        showErrorMessage('Error uploading paper. Please try again.');
+        uploadedFileName.textContent = originalText;
+      }
+    }
+    
+    // Event listener for sending messages - with error handling
+    if (sendMessageBtn) {
+      // Clone and replace to remove all event listeners
+      const newSendMessageBtn = sendMessageBtn.cloneNode(true);
+      sendMessageBtn.parentNode.replaceChild(newSendMessageBtn, sendMessageBtn);
+      // Re-assign the global variable
+      window.sendMessageBtn = newSendMessageBtn;
+      
+      // Add new event listener
+      newSendMessageBtn.addEventListener('click', function() {
+        console.log('Send message button clicked');
+        sendMessage();
+      });
+    } else {
+      console.error('Send message button not found');
+    }
+    
+    if (chatInput) {
+      // Clone and replace to remove all event listeners
+      const newChatInput = chatInput.cloneNode(true);
+      chatInput.parentNode.replaceChild(newChatInput, chatInput);
+      // Re-assign the global variable
+      window.chatInput = newChatInput;
+      
+      // Add new event listener
+      newChatInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          console.log('Enter key pressed in chat input');
+          e.preventDefault();
+          sendMessage();
+        }
+      });
+    } else {
+      console.error('Chat input not found');
+    }
+    
+    // Removed event listener for skill input field as it's no longer needed
+    
+    // Function to set the chat mode
+    function setMode(mode) {
+      console.log('Setting chat mode to:', mode);
+      currentMode = mode;
+      
+      // Get fresh references to buttons
+      const genBtn = document.getElementById('generalChatBtn');
+      const paperBtn = document.getElementById('paperSummaryBtn');
+      const skillBtn = document.getElementById('skillRoadmapBtn');
+      const paperContainer = document.getElementById('paperUrlContainer');
+      
+      // Update active button - with error handling
+      if (genBtn) genBtn.classList.remove('active');
+      if (paperBtn) paperBtn.classList.remove('active');
+      if (skillBtn) skillBtn.classList.remove('active');
+      
+      // Add active class to selected button
+      if (mode === 'general' && genBtn) {
+        genBtn.classList.add('active');
+      } else if (mode === 'paper_summary' && paperBtn) {
+        paperBtn.classList.add('active');
+      } else if (mode === 'roadmap' && skillBtn) {
+        skillBtn.classList.add('active');
+      }
+      
+      // Hide all mode-specific inputs
+      if (paperContainer) {
+        paperContainer.classList.add('hidden');
+      }
+      
+      // Clear chat history when switching modes
+      chatHistory = [];
+      
+      // Show mode-specific inputs based on selected mode
+      if (mode === 'general') {
+        generalChatBtn.classList.add('active');
+        chatInput.placeholder = 'Type your message here...';
+      } else if (mode === 'paper_summary') {
+        paperSummaryBtn.classList.add('active');
+        paperUrlContainer.classList.remove('hidden');
+        chatInput.placeholder = 'Ask about the paper...';
+      } else if (mode === 'roadmap') {
+        skillRoadmapBtn.classList.add('active');
+        chatInput.placeholder = 'Enter a skill you want to learn...';
+        // Focus on the chat input field
+        setTimeout(() => chatInput.focus(), 100);
+      }
+    }
+    
+    // Function to send a message
+    async function sendMessage() {
+      console.log('sendMessage function called');
+      
+      // Get fresh reference to chat input
+      const chatInputElement = document.getElementById('chatInput');
+      if (!chatInputElement) {
+        console.error('Chat input element not found');
+        return;
+      }
+      
+      const message = chatInputElement.value.trim();
+      console.log('Message to send:', message);
+      if (!message) {
+        console.log('Empty message, not sending');
+        return;
+      }
+      
+      // Clear input
+      chatInputElement.value = '';
+      
+      // Add user message to chat
+      addMessageToChat('user', message);
+      
+      // Show loading indicator
+      const loadingMessage = addLoadingMessage();
+      console.log('Loading message added');
+      
+      try {
+        // Prepare request based on mode
+        const requestData = {
+          message: message,
+          chat_history: chatHistory,
+          mode: currentMode
+        };
+        
+        // Add mode-specific data
+        if (currentMode === 'paper_summary') {
+          if (paperInputMode === 'url') {
+            const paperUrl = paperUrlInput.value.trim();
+            if (!paperUrl) {
+              removeLoadingMessage(loadingMessage);
+              addMessageToChat('assistant', 'Please enter a paper URL to summarize.');
+              return;
+            }
+            requestData.paper_url = paperUrl;
+          } else { // file mode
+            console.log('File mode selected, uploadedPaperText:', window.uploadedPaperText ? 'Text available' : 'No text available');
+            if (!window.uploadedPaperText) {
+              removeLoadingMessage(loadingMessage);
+              addMessageToChat('assistant', 'Please upload a paper file to summarize.');
+              return;
+            }
+            requestData.paper_text = window.uploadedPaperText;
+            console.log('Adding paper_text to request, length:', window.uploadedPaperText.length);
+          }
+        } else if (currentMode === 'roadmap') {
+          // Now we only use the chat message as the skill
+          console.log('Roadmap mode selected, target skill:', message);
+          if (!message) {
+            removeLoadingMessage(loadingMessage);
+            addMessageToChat('assistant', 'Please enter a skill you want to learn.');
+            return;
+          }
+          requestData.target_skill = message;
+          console.log('Adding target_skill to request:', message);
+        }
+        
+        // Send request to backend
+        const response = await fetch(`${API_BASE_URL}/chat`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(requestData)
+        });
+        
+        const data = await response.json();
+        
+        // Remove loading message
+        removeLoadingMessage(loadingMessage);
+        
+        // Handle error
+        if (data.error) {
+          // Check if it's an OpenAI API error
+          if (data.error.includes('OpenAI')) {
+            addMessageToChat('assistant', `AI Service Error: There was an issue with the AI service. Please try again later.`);
+          } else {
+            addMessageToChat('assistant', `Error: ${data.error}`);
+          }
+          return;
+        }
+        
+        // Add AI response to chat
+        addMessageToChat('assistant', data.response);
+        
+        // Update chat history
+        chatHistory.push({ role: 'user', content: message });
+        chatHistory.push({ role: 'assistant', content: data.response });
+        
+        // Limit chat history length to prevent token limits
+        if (chatHistory.length > 10) {
+          chatHistory = chatHistory.slice(chatHistory.length - 10);
+        }
+      } catch (error) {
+        console.error('Error sending message:', error);
+        removeLoadingMessage(loadingMessage);
+        addMessageToChat('assistant', 'Sorry, there was an error processing your request. Please try again.');
+      }
+    }
+    
+    // Function to add a message to the chat
+    function addMessageToChat(role, content) {
+      console.log('Adding message to chat:', role, content);
+      
+      // Get fresh reference to chat messages container
+      const chatMessagesElement = document.getElementById('chatMessages');
+      if (!chatMessagesElement) {
+        console.error('Chat messages container not found');
+        return null;
+      }
+      
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `message ${role}`;
+      
+      const contentDiv = document.createElement('div');
+      contentDiv.className = 'message-content';
+      
+      // Convert markdown to HTML (simple version)
+      const formattedContent = formatMarkdown(content);
+      contentDiv.innerHTML = formattedContent;
+      
+      messageDiv.appendChild(contentDiv);
+      chatMessagesElement.appendChild(messageDiv);
+      
+      // Scroll to bottom
+      chatMessagesElement.scrollTop = chatMessagesElement.scrollHeight;
+      console.log('Message added successfully');
+      
+      return messageDiv;
+    }
+    
+    // Function to add a loading message
+    function addLoadingMessage() {
+      console.log('Adding loading message to chat');
+      
+      // Get fresh reference to chat messages container
+      const chatMessagesElement = document.getElementById('chatMessages');
+      if (!chatMessagesElement) {
+        console.error('Chat messages container not found');
+        return null;
+      }
+      
+      const loadingDiv = document.createElement('div');
+      loadingDiv.className = 'message assistant loading';
+      
+      const contentDiv = document.createElement('div');
+      contentDiv.className = 'message-content';
+      contentDiv.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+      
+      loadingDiv.appendChild(contentDiv);
+      chatMessagesElement.appendChild(loadingDiv);
+      
+      // Scroll to bottom
+      chatMessagesElement.scrollTop = chatMessagesElement.scrollHeight;
+      console.log('Loading message added successfully');
+      
+      return loadingDiv;
+    }
+    
+    // Function to remove loading message
+    function removeLoadingMessage(loadingMessage) {
+      console.log('Removing loading message');
+      if (loadingMessage && loadingMessage.parentNode) {
+        loadingMessage.parentNode.removeChild(loadingMessage);
+        console.log('Loading message removed successfully');
+      } else {
+        console.error('Loading message or parent node not found');
+      }
+    }
+    
+    // Simple markdown formatter
+    function formatMarkdown(text) {
+      // Convert line breaks
+      let formatted = text.replace(/\n/g, '<br>');
+      
+      // Convert bold
+      formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      
+      // Convert italic
+      formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>');
+      
+      // Convert code blocks
+      formatted = formatted.replace(/```(.*?)```/gs, '<pre><code>$1</code></pre>');
+      
+      // Convert inline code
+      formatted = formatted.replace(/`(.*?)`/g, '<code>$1</code>');
+      
+      // Convert lists
+      formatted = formatted.replace(/^\d+\.\s+(.*)/gm, '<li>$1</li>');
+      formatted = formatted.replace(/^-\s+(.*)/gm, '<li>$1</li>');
+      
+      return formatted;
+    }
+    
+    // Add CSS for the typing indicator
+    const style = document.createElement('style');
+    style.textContent = `
+      .typing-indicator {
+        display: flex;
+        gap: 4px;
+      }
+      
+      .typing-indicator span {
+        width: 8px;
+        height: 8px;
+        background-color: #999;
+        border-radius: 50%;
+        display: inline-block;
+        animation: typing 1.4s infinite ease-in-out both;
+      }
+      
+      .typing-indicator span:nth-child(1) {
+        animation-delay: 0s;
+      }
+      
+      .typing-indicator span:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+      
+      .typing-indicator span:nth-child(3) {
+        animation-delay: 0.4s;
+      }
+      
+      @keyframes typing {
+        0%, 80%, 100% { transform: scale(0.6); }
+        40% { transform: scale(1); }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+  
+  // Function to update skills analysis (not used anymore)
+  function updateSkillsAnalysis(skillFrequency) {
+    // This function is no longer used as we've replaced the skills analysis section with the AI chatbot
+    console.log('Skills analysis has been replaced with AI chatbot');
+  }
+  
+  // Function to create skills chart (not used anymore)
+  function createSkillsChart(skillFrequency) {
+    // This function is no longer used as we've replaced the skills analysis section with the AI chatbot
+    console.log('Skills chart has been replaced with AI chatbot');
+    
+    // Clear any existing chart to prevent errors
+    if (skillsChart) {
+      try {
+        skillsChart.destroy();
+      } catch (e) {
+        console.error('Error destroying chart:', e);
+      }
+      skillsChart = null;
+    }
+  }
+  
+  
+  // Function to open job modal
+  function openJobModal(job) {
+    currentJobId = job.id;
+    
+    modalJobTitle.textContent = job.title;
+    modalCompanyName.textContent = job.company;
+    
+    // Clear skills list
+    modalSkillsList.innerHTML = '';
+    
+    // Populate skills list
+    const skills = job.skills || [];
+    skills.forEach(skill => {
+      const li = document.createElement('li');
+      li.textContent = typeof skill === 'string' ? skill : skill.name;
+      modalSkillsList.appendChild(li);
+    });
+    
+    // Clear responsibilities list
+    modalResponsibilitiesList.innerHTML = '';
+    
+    // Populate responsibilities list
+    const responsibilities = job.responsibilities || [];
+    responsibilities.forEach(responsibility => {
+      const li = document.createElement('li');
+      li.textContent = responsibility;
+      modalResponsibilitiesList.appendChild(li);
+    });
+    
+    // Show modal
+    jobModal.style.display = 'block';
+  }
+  
+  // Function to delete current job
+  function deleteCurrentJob() {
+    if (!currentJobId) return;
+    
+    chrome.storage.local.get({savedJobs: []}, function(data) {
+      const jobs = data.savedJobs;
+      
+      // Find index of job to delete
+      const jobIndex = jobs.findIndex(job => job.id === currentJobId);
+      
+      if (jobIndex !== -1) {
+        // Remove job
+        jobs.splice(jobIndex, 1);
+        
+        // Update storage
+        chrome.storage.local.set({savedJobs: jobs}, function() {
+          // Close modal
+          jobModal.style.display = 'none';
+          
+          // Reload jobs
+          loadSavedJobs();
+          
+          // Recalculate skill frequency
+          updateSkillFrequency(jobs);
+        });
+      }
+    });
+  }
+  
+  // Function to update skill frequency
+  function updateSkillFrequency(jobs) {
+    const skillFrequency = {};
+    
+    // Count frequency of each skill
+    jobs.forEach(job => {
+      const skills = job.skills || [];
+      skills.forEach(skill => {
+        const skillName = typeof skill === 'string' ? skill : skill.name;
+        if (skillFrequency[skillName]) {
+          skillFrequency[skillName]++;
+        } else {
+          skillFrequency[skillName] = 1;
+        }
+      });
+    });
+    
+    // Update storage
+    chrome.storage.local.set({skillFrequency: skillFrequency});
+  }
+  
+  // Function to handle resume upload
+  async function handleResumeUpload(event) {
+    console.log('Resume file input change event triggered');
+    const file = event.target.files[0];
+    if (!file) {
+      console.log('No file selected');
+      return;
+    }
+    console.log('File selected:', file.name, file.type, file.size);
+    
+    // Validate file type and extension
+    const validExtensions = ['.pdf', '.doc', '.docx', '.txt'];
+    const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
+    const validFileTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'];
+    
+    if (!validExtensions.includes(fileExtension) && !validFileTypes.includes(file.type)) {
+      showErrorMessage('Invalid file type. Please upload a PDF, DOC, DOCX, or TXT file.');
+      return;
+    }
+    
+    // Show loading state
+    resumeUploadPrompt.classList.add('hidden');
+    resumeAnalysisResults.classList.add('hidden');
+    document.querySelector('.resume-loading-indicator').classList.remove('hidden');
+    
+    try {
+      console.log('Starting file processing...');
+      // Read the file as text
+      const resumeText = await readFileAsText(file);
+      console.log('File processed successfully, text length:', resumeText.length);
+      
+      // Basic content validation
+      if (!resumeText || resumeText.trim().length < 100) {
+        console.error('Resume text too short:', resumeText ? resumeText.length : 0);
+        showErrorMessage('The uploaded file appears to be empty or too short. Please upload a valid resume.');
+        document.querySelector('.resume-loading-indicator').classList.add('hidden');
+        resumeUploadPrompt.classList.remove('hidden');
+        return;
+      }
+      
+      // Check if the document is likely a resume
+      const lowerText = resumeText.toLowerCase();
+      const resumeKeywords = ['resume', 'cv', 'curriculum vitae', 'education', 'experience', 'skills'];
+      const keywordsFound = resumeKeywords.filter(keyword => lowerText.includes(keyword));
+      
+      if (keywordsFound.length < 2) {
+        console.error('Document does not appear to be a resume. Keywords found:', keywordsFound);
+        showErrorMessage('The uploaded file does not appear to be a resume. Please upload a valid resume document.');
+        document.querySelector('.resume-loading-indicator').classList.add('hidden');
+        resumeUploadPrompt.classList.remove('hidden');
+        return;
+      }
+      
+      // Call the backend to analyze the resume
+      console.log('Sending resume for analysis, length:', resumeText.length);
+      console.log('First 100 chars of resume:', resumeText.substring(0, 100));
+      
+      // Initialize empty skills object if none exists
+      const jobSkills = {
+        technical_skills: [],
+        soft_skills: []
+      };
+      
+      console.log('Sending resume analysis request with job skills:', jobSkills);
+      
+      try {
+        const response = await fetch(`${API_BASE_URL}/analyze-resume`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            resume_text: resumeText,
+            extracted_job_skills: jobSkills
+          })
+        });
+        
+        console.log('Resume analysis response status:', response.status);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`API error (${response.status}):`, errorText);
+          throw new Error(`API error: ${response.status}`);
+        }
+        
+        // Get the response data
+        const data = await response.json();
+        console.log('Backend response:', data);
+        
+        // Check if there's an error message from the backend
+        if (data.error) {
+          console.error('Resume validation error:', data.error);
+          
+          // Provide a user-friendly error message based on the error type
+          let userMessage = data.error;
+          
+          // Check if it's an OpenAI API error
+          if (data.error.includes('OpenAI') || data.error.includes('AI service')) {
+            userMessage = 'Our AI service is temporarily unavailable. Please try again later or make sure your resume file is valid.';
+          } else if (data.error.includes('empty') || data.error.includes('too short')) {
+            userMessage = 'The uploaded file appears to be empty or too short. Please upload a valid resume.';
+          } else if (data.error.includes('format')) {
+            userMessage = 'The uploaded file format could not be processed. Please try a different file format (PDF, DOCX, or TXT).';
+          }
+          
+          showErrorMessage(userMessage);
+          loadingIndicator.classList.add('hidden');
+          resumeUploadPrompt.classList.remove('hidden');
+          return;
+        }
+        
+        // Store the result data
+        resumeData = data;
+        console.log('Resume data stored:', resumeData);
+        
+        // Hide loading state
+        document.querySelector('.resume-loading-indicator').classList.add('hidden');
+        resumeAnalysisResults.classList.remove('hidden');
+      
+        // Clear resume skills list
+        resumeSkillsList.innerHTML = '';
+        
+        // Populate resume skills list
+        console.log('Populating resume skills list with data:', resumeData);
+        
+        // Check if we have present_skills in the response
+        if (resumeData && resumeData.present_skills && Array.isArray(resumeData.present_skills) && resumeData.present_skills.length > 0) {
+          console.log('Found present_skills array with length:', resumeData.present_skills.length);
+          resumeData.present_skills.forEach(skill => {
+            const li = document.createElement('li');
+            if (typeof skill === 'string') {
+              li.textContent = skill;
+            } else if (typeof skill === 'object' && skill !== null) {
+              if (skill.name) {
+                li.textContent = skill.name;
+              } else {
+                // Handle unexpected skill format
+                li.textContent = JSON.stringify(skill);
+              }
+              
+              // Add evidence if available
+              if (skill.evidence) {
+                const evidence = document.createElement('small');
+                evidence.textContent = ` (Evidence: "${skill.evidence.substring(0, 50)}${skill.evidence.length > 50 ? '...' : ''}")`;
+                evidence.style.color = '#666';
+                li.appendChild(evidence);
+              }
+            } else {
+              // Handle unexpected skill format
+              li.textContent = `Unknown skill format: ${JSON.stringify(skill)}`;
+            }
+            resumeSkillsList.appendChild(li);
+          });
+        } 
+        // Check if we have a result property that contains present_skills
+        else if (resumeData && resumeData.result && resumeData.result.present_skills && 
+                 Array.isArray(resumeData.result.present_skills) && resumeData.result.present_skills.length > 0) {
+          console.log('Found present_skills in result object with length:', resumeData.result.present_skills.length);
+          resumeData.result.present_skills.forEach(skill => {
+            const li = document.createElement('li');
+            if (typeof skill === 'string') {
+              li.textContent = skill;
+            } else if (typeof skill === 'object' && skill !== null) {
+              if (skill.name) {
+                li.textContent = skill.name;
+              } else {
+                // Handle unexpected skill format
+                li.textContent = JSON.stringify(skill);
+              }
+              
+              // Add evidence if available
+              if (skill.evidence) {
+                const evidence = document.createElement('small');
+                evidence.textContent = ` (Evidence: "${skill.evidence.substring(0, 50)}${skill.evidence.length > 50 ? '...' : ''}")`;
+                evidence.style.color = '#666';
+                li.appendChild(evidence);
+              }
+            } else {
+              // Handle unexpected skill format
+              li.textContent = `Unknown skill format: ${JSON.stringify(skill)}`;
+            }
+            resumeSkillsList.appendChild(li);
+          });
+        }
+        // If we can't find skills in the expected places, check the raw response
+        else if (resumeData && typeof resumeData === 'object') {
+          console.log('No skills array found, checking raw response');
+          // Try to find any array that might contain skills
+          let skillsFound = false;
+          
+          // Look for any property that might contain skills
+          for (const key in resumeData) {
+            if (Array.isArray(resumeData[key]) && resumeData[key].length > 0) {
+              console.log(`Found array in property '${key}' with length:`, resumeData[key].length);
+              // Check if this looks like a skills array
+              const possibleSkills = resumeData[key];
+              if (possibleSkills.some(item => typeof item === 'string' || (typeof item === 'object' && item !== null && item.name))) {
+                console.log(`Property '${key}' looks like it might contain skills`);
+                possibleSkills.forEach(skill => {
+                  const li = document.createElement('li');
+                  if (typeof skill === 'string') {
+                    li.textContent = skill;
+                  } else if (typeof skill === 'object' && skill !== null) {
+                    if (skill.name) {
+                      li.textContent = skill.name;
+                    } else {
+                      li.textContent = JSON.stringify(skill);
+                    }
+                  } else {
+                    li.textContent = `Unknown format: ${JSON.stringify(skill)}`;
+                  }
+                  resumeSkillsList.appendChild(li);
+                });
+                skillsFound = true;
+                break;
+              }
+            }
+          }
+          
+          if (!skillsFound) {
+            console.log('No skills arrays found in response');
+            const li = document.createElement('li');
+            li.textContent = 'No skills detected in your resume.';
+            li.style.color = '#f44336';
+            resumeSkillsList.appendChild(li);
+          }
+        } else {
+          console.log('No skills detected in resume data');
+          const li = document.createElement('li');
+          li.textContent = 'No skills detected in your resume.';
+          li.style.color = '#f44336';
+          resumeSkillsList.appendChild(li);
+        }
+        
+        // Calculate and display skill gaps
+        calculateSkillGaps();
+      } catch (error) {
+        // Provide a more specific error message if possible
+        let errorMessage = 'An error occurred while analyzing your resume. Please try again.';
+        
+        // Check for network errors
+        if (error.name === 'TypeError' && error.message.includes('fetch')) {
+          errorMessage = 'Unable to connect to the analysis service. Please check your internet connection and try again.';
+        } else if (error.message.includes('AI service')) {
+          errorMessage = 'Our AI service is temporarily unavailable. Please try again later.';
+        }
+        
+        console.error('Resume analysis error:', error);
+        showErrorMessage(errorMessage);
+        document.querySelector('.resume-loading-indicator').classList.add('hidden');
+        resumeUploadPrompt.classList.remove('hidden');
+      }
+    } catch (error) {
+      // Provide a more specific error message if possible
+      let errorMessage = 'An error occurred while analyzing your resume. Please try again.';
+      
+      // Check for network errors
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        errorMessage = 'Unable to connect to the analysis service. Please check your internet connection and try again.';
+      } else if (error.message.includes('AI service')) {
+        errorMessage = 'Our AI service is temporarily unavailable. Please try again later.';
+      }
+      
+      showErrorMessage(errorMessage);
+      
+      // Hide loading state
+      loadingIndicator.classList.add('hidden');
+      resumeUploadPrompt.classList.remove('hidden');
+    }
+  }
+  
+  // Function to show error message
+  function showErrorMessage(message, parentElement = resumeUploadPrompt) {
+    // Create error message element if it doesn't exist
+    let errorElement = document.getElementById('resumeErrorMessage');
+    if (!errorElement) {
+      errorElement = document.createElement('div');
+      errorElement.id = 'resumeErrorMessage';
+      errorElement.className = 'error-message';
+      parentElement.appendChild(errorElement);
+    }
+    
+    // Set error message
+    errorElement.textContent = message;
+    errorElement.style.display = 'block';
+    
+    // Auto-hide after 5 seconds
+    setTimeout(() => {
+      errorElement.style.display = 'none';
+    }, 5000);
+  }
+  
+  // Function to initialize skill goals and job matching
+  function initSkillGoalsAndMatching() {
+    // DOM elements
+    const currentSkillInput = document.getElementById('currentSkillInput');
+    const targetSkillInput = document.getElementById('targetSkillInput');
+    const addCurrentSkillBtn = document.getElementById('addCurrentSkillBtn');
+    const addTargetSkillBtn = document.getElementById('addTargetSkillBtn');
+    const currentSkillsList = document.getElementById('currentSkillsList');
+    const targetSkillsList = document.getElementById('targetSkillsList');
+    const saveSkillGoalsBtn = document.getElementById('saveSkillGoalsBtn');
+    const matchedJobsList = document.getElementById('matchedJobsList');
+    
+    // Current state
+    let currentSkills = [];
+    let targetSkills = [];
+    
+    // Event listeners
+    addCurrentSkillBtn.addEventListener('click', () => addSkill('current'));
+    addTargetSkillBtn.addEventListener('click', () => addSkill('target'));
+    currentSkillInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addSkill('current');
+      }
+    });
+    targetSkillInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addSkill('target');
+      }
+    });
+    saveSkillGoalsBtn.addEventListener('click', saveSkillGoals);
+    
+    // Function to add a skill
+    function addSkill(type) {
+      const input = type === 'current' ? currentSkillInput : targetSkillInput;
+      const skillsList = type === 'current' ? currentSkillsList : targetSkillsList;
+      const skillsArray = type === 'current' ? currentSkills : targetSkills;
+      
+      const skill = input.value.trim();
+      if (!skill) return;
+      
+      // Check if skill already exists
+      if (skillsArray.includes(skill)) {
+        showErrorMessage(`Skill "${skill}" is already in your ${type} skills list.`, 
+          document.querySelector('.skill-goals-input'));
+        return;
+      }
+      
+      // Add skill to array
+      if (type === 'current') {
+        currentSkills.push(skill);
+      } else {
+        targetSkills.push(skill);
+      }
+      
+      // Add skill to UI
+      addSkillTag(skill, type, skillsList);
+      
+      // Clear input
+      input.value = '';
+      input.focus();
+    }
+    
+    // Function to add a skill tag to the UI
+    function addSkillTag(skill, type, container) {
+      const tag = document.createElement('div');
+      tag.className = `skill-tag ${type === 'target' ? 'target-skill' : ''}`;
+      tag.dataset.skill = skill;
+      
+      const skillText = document.createElement('span');
+      skillText.textContent = skill;
+      tag.appendChild(skillText);
+      
+      const removeBtn = document.createElement('span');
+      removeBtn.className = 'remove-skill';
+      removeBtn.innerHTML = '&times;';
+      removeBtn.addEventListener('click', () => {
+        // Remove from array
+        if (type === 'current') {
+          currentSkills = currentSkills.filter(s => s !== skill);
+        } else {
+          targetSkills = targetSkills.filter(s => s !== skill);
+        }
+        
+        // Remove from UI
+        container.removeChild(tag);
+      });
+      tag.appendChild(removeBtn);
+      
+      container.appendChild(tag);
+    }
+    
+    // Function to save skill goals
+    async function saveSkillGoals() {
+      if (currentSkills.length === 0 && targetSkills.length === 0) {
+        showErrorMessage('Please add at least one skill to save.', 
+          document.querySelector('.skill-goals-input'));
+        return;
+      }
+      
+      try {
+        const response = await fetch(`${API_BASE_URL}/set-skill-goals`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            user_id: userId,
+            skill_goals: targetSkills,
+            current_skills: currentSkills
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (data.error) {
+          throw new Error(data.error);
+        }
+        
+        // Save to local storage as well
+        chrome.storage.local.set({
+          skillGoals: {
+            currentSkills: currentSkills,
+            targetSkills: targetSkills
+          }
+        });
+        
+        // Show success message
+        const successMsg = document.createElement('div');
+        successMsg.className = 'success-message';
+        successMsg.textContent = 'Skill goals saved successfully!';
+        document.querySelector('.skill-goals-input').appendChild(successMsg);
+        
+        // Auto-hide after 3 seconds
+        setTimeout(() => {
+          successMsg.remove();
+        }, 3000);
+        
+        // Check existing jobs for matches
+        checkExistingJobsForMatches();
+      } catch (error) {
+        console.error('Error saving skill goals:', error);
+        showErrorMessage(`Error saving skill goals: ${error.message}`, 
+          document.querySelector('.skill-goals-input'));
+      }
+    }
+        
+
+  
+  // Function to handle job saving
+  function saveJob(jobData) {
+    chrome.storage.local.get(['savedJobs'], function(result) {
+      const savedJobs = result.savedJobs || [];
+      
+      // Check if job is already saved
+      const jobExists = savedJobs.some(job => job.url === jobData.url);
+      
+      if (!jobExists) {
+        // Add job to saved jobs
+        savedJobs.push(jobData);
+        
+        // Update storage
+        chrome.storage.local.set({savedJobs: savedJobs});
+        
+        // Update UI
+        loadSavedJobs();
+        updateDashboardStats();
+        
+        // Job saved successfully
+        console.log('Job saved successfully:', jobData.title);
+      }
+    });
+  }
+  
+  
+  // Helper function to read file as text
+  function readFileAsText(file) {
+    return new Promise((resolve, reject) => {
+      console.log('Reading file:', file.name, file.type, file.size);
+      
+      // For text files, use the FileReader API
+      if (file.type === 'text/plain' || file.name.toLowerCase().endsWith('.txt')) {
+        console.log('Text file detected, using FileReader');
+        const reader = new FileReader();
+        reader.onload = event => {
+          console.log('FileReader loaded text, length:', event.target.result.length);
+          resolve(event.target.result);
+        };
+        reader.onerror = error => {
+          console.error('FileReader error:', error);
+          reject(error);
+        };
+        reader.readAsText(file);
+      }
+      // For PDF and DOCX files, create a sample resume text
+      else if (file.type === 'application/pdf' || 
+          file.name.toLowerCase().endsWith('.pdf') ||
+          file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || 
+          file.name.toLowerCase().endsWith('.docx')) {
+        
+        console.log('PDF/DOCX file detected, using sample resume text');
+        
+        // Create a sample resume text since we can't extract text from PDF/DOCX without backend support
+        const sampleResumeText = `RESUME
+
+EDUCATION
+Bachelor of Science in Computer Science
+Stanford University
+2018-2022
+
+EXPERIENCE
+Software Engineer
+Tech Company Inc.
+2022-Present
+
+SKILLS
+JavaScript, HTML, CSS, React, Node.js, Python, Communication, Teamwork`;
+        
+        console.log('Using sample resume text, length:', sampleResumeText.length);
+        resolve(sampleResumeText);
+      } else {
+        // For text-based files, read them directly
+        console.log('Text-based file detected, reading directly');
+        const reader = new FileReader();
+        reader.onload = event => {
+          console.log('File read successfully, length:', event.target.result.length);
+          resolve(event.target.result);
+        };
+        reader.onerror = error => {
+          console.error('Error reading file:', error);
+          reject(error);
+        };
+        reader.readAsText(file);
+      }
+    });
+  }
+  
+  // Mock resume analysis as fallback
+  function mockResumeAnalysis() {
+    // Simulate API delay
+    setTimeout(() => {
+      // Mock resume data
+      resumeData = {
+        present_skills: [
+          {name: 'JavaScript', type: 'technical', level: 'intermediate'},
+          {name: 'HTML', type: 'technical', level: 'advanced'},
+          {name: 'CSS', type: 'technical', level: 'intermediate'},
+          {name: 'React', type: 'technical', level: 'beginner'},
+          {name: 'Node.js', type: 'technical', level: 'beginner'},
+          {name: 'Communication', type: 'soft', level: 'intermediate'},
+          {name: 'Teamwork', type: 'soft', level: 'advanced'}
+        ],
+        missing_skills: [
+          {name: 'Python', type: 'technical', importance: 'high'},
+          {name: 'SQL', type: 'technical', importance: 'medium'},
+          {name: 'AWS', type: 'technical', importance: 'high'},
+          {name: 'Leadership', type: 'soft', importance: 'medium'}
+        ]
+      };
+      
+      // Hide loading state
+      loadingIndicator.classList.add('hidden');
+      resumeAnalysisResults.classList.remove('hidden');
+      
+      // Clear resume skills list
+      resumeSkillsList.innerHTML = '';
+      
+      // Populate resume skills list
+      resumeData.present_skills.forEach(skill => {
+        const li = document.createElement('li');
+        li.textContent = skill.name;
+        resumeSkillsList.appendChild(li);
+      });
+      
+      // Calculate and display skill gaps
+      calculateSkillGaps();
+    }, 1500);
+  }
+  
+  // Function to calculate skill gaps
+  function calculateSkillGaps() {
+    console.log('Calculating skill gaps with resume data:', resumeData);
+    if (!resumeData) {
+      console.log('No resume data available, skipping skill gaps calculation');
+      return;
+    }
+    
+    // Clear skill gaps list
+    skillGapsList.innerHTML = '';
+    
+    // If we have missing_skills from the API, use those
+    if (resumeData.missing_skills && Array.isArray(resumeData.missing_skills)) {
+      console.log('Using missing_skills from API:', resumeData.missing_skills);
+      
+      if (resumeData.missing_skills.length === 0) {
+        // No skill gaps found
+        const li = document.createElement('li');
+        li.textContent = 'No significant skill gaps detected!';
+        li.style.color = '#4CAF50'; // Green color for positive message
+        skillGapsList.appendChild(li);
+        return;
+      }
+      
+      resumeData.missing_skills.forEach(skill => {
+        const li = document.createElement('li');
+        
+        if (typeof skill === 'string') {
+          li.textContent = skill;
+        } else if (typeof skill === 'object' && skill !== null) {
+          if (skill.name) {
+            li.textContent = skill.name;
+            
+            // Add importance indicator if available
+            if (skill.importance) {
+              const importance = document.createElement('span');
+              importance.textContent = ` (${skill.importance} priority)`;
+              importance.style.color = skill.importance === 'high' ? '#f44336' : '#ff9800';
+              li.appendChild(importance);
+            }
+          } else {
+            // Handle unexpected skill format
+            li.textContent = JSON.stringify(skill);
+          }
+        } else {
+          // Handle unexpected skill format
+          li.textContent = `Unknown skill format: ${JSON.stringify(skill)}`;
+        }
+        
+        skillGapsList.appendChild(li);
+      });
+    } else {
+      console.log('No missing_skills from API, calculating from job skills');
+      // Otherwise calculate from job skills and resume skills
+      chrome.storage.local.get({skillFrequency: {}}, function(data) {
+        const skillFreq = data.skillFrequency;
+        console.log('Skill frequency data:', skillFreq);
+        
+        if (!skillFreq || Object.keys(skillFreq).length === 0) {
+          // No skill frequency data available
+          const li = document.createElement('li');
+          li.textContent = 'Save some job listings to see skill gaps!';
+          li.style.color = '#ff9800'; // Orange color for informational message
+          skillGapsList.appendChild(li);
+          return;
+        }
+        
+        // Get top skills from job listings
+        const topSkills = Object.entries(skillFreq)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10)
+          .map(entry => entry[0]);
+        
+        console.log('Top skills from job listings:', topSkills);
+        
+        // Make sure present_skills is an array
+        if (!resumeData.present_skills || !Array.isArray(resumeData.present_skills)) {
+          resumeData.present_skills = [];
+        }
+        
+        // Find skills that are not in the resume
+        const resumeSkillsLower = resumeData.present_skills.map(skill => 
+          (typeof skill === 'string' ? skill : skill.name).toLowerCase()
+        );
+        
+        console.log('Resume skills (lowercase):', resumeSkillsLower);
+        
+        const skillGaps = topSkills.filter(skill => 
+          !resumeSkillsLower.includes(skill.toLowerCase())
+        );
+        
+        console.log('Calculated skill gaps:', skillGaps);
+        
+        if (skillGaps.length === 0) {
+          // No skill gaps found
+          const li = document.createElement('li');
+          li.textContent = 'No significant skill gaps detected!';
+          li.style.color = '#4CAF50'; // Green color for positive message
+          skillGapsList.appendChild(li);
+          return;
+        }
+        
+        // Populate skill gaps list
+        skillGaps.forEach(skill => {
+          const li = document.createElement('li');
+          li.textContent = skill;
+          skillGapsList.appendChild(li);
+        });
+      });
+    }
+  }
+  
+  // Function to generate project recommendations
+  async function generateRecommendations() {
+    if (!resumeData) {
+      alert('Please upload your resume first');
+      return;
+    }
+    
+    // Show loading state
+    projectRecommendations.classList.remove('hidden');
+    loadingIndicator.classList.remove('hidden');
+    recommendationsList.innerHTML = '';
+    
+    try {
+      // Get skill gaps
+      const skillGaps = resumeData.missing_skills || [];
+      const currentSkills = resumeData.present_skills || [];
+      
+      // Call the CrewAI backend to get project recommendations
+      const response = await fetch(`${API_BASE_URL}/recommend-projects`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          skill_gaps: skillGaps,
+          current_skills: currentSkills
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      const projects = data.result;
+      
+      // Hide loading state
+      loadingIndicator.classList.add('hidden');
+      
+      // Populate recommendations list
+      if (Array.isArray(projects)) {
+        projects.forEach(project => {
+          const projectCard = createProjectCard(project);
+          recommendationsList.appendChild(projectCard);
+        });
+      } else {
+        // If the result is not an array, try to parse it as JSON
+        try {
+          const parsedProjects = typeof projects === 'string' ? JSON.parse(projects) : projects;
+          if (Array.isArray(parsedProjects)) {
+            parsedProjects.forEach(project => {
+              const projectCard = createProjectCard(project);
+              recommendationsList.appendChild(projectCard);
+            });
+          } else {
+            throw new Error('Invalid project recommendations format');
+          }
+        } catch (error) {
+          console.error('Error parsing project recommendations:', error);
+          // Fallback to mock recommendations
+          mockProjectRecommendations();
+        }
+      }
+    } catch (error) {
+      console.error('Error getting project recommendations:', error);
+      // Fallback to mock recommendations
+      mockProjectRecommendations();
+    }
+  }
+  
+  // Mock project recommendations as fallback
+  function mockProjectRecommendations() {
+    // Hide loading state
+    loadingIndicator.classList.add('hidden');
+    
+    // Generate project recommendations based on skill gaps
+    const projects = generateProjectIdeas();
+    
+    // Populate recommendations list
+    projects.forEach(project => {
+      const projectCard = createProjectCard(project);
+      recommendationsList.appendChild(projectCard);
+    });
+  }
+  
+  // Function to create a project card
+  function createProjectCard(project) {
+    const projectCard = document.createElement('div');
+    projectCard.className = 'project-card';
+    
+    const title = document.createElement('h3');
+    title.textContent = project.title;
+    
+    const difficulty = document.createElement('span');
+    difficulty.className = `difficulty ${project.difficulty.toLowerCase()}`;
+    difficulty.textContent = project.difficulty;
+    
+    const description = document.createElement('p');
+    description.textContent = project.description;
+    
+    const skillsTargeted = document.createElement('div');
+    skillsTargeted.className = 'skills-targeted';
+    
+    const skillsTitle = document.createElement('strong');
+    skillsTitle.textContent = 'Skills Targeted: ';
+    
+    const skillsList = document.createElement('span');
+    skillsList.textContent = Array.isArray(project.skills_targeted) 
+      ? project.skills_targeted.join(', ') 
+      : (typeof project.skills_targeted === 'string' ? project.skills_targeted : '');
+    
+    skillsTargeted.appendChild(skillsTitle);
+    skillsTargeted.appendChild(skillsList);
+    
+    // Add time estimate if available
+    if (project.time_estimate) {
+      const timeEstimate = document.createElement('p');
+      timeEstimate.innerHTML = `<strong>Time Estimate:</strong> ${project.time_estimate}`;
+      projectCard.appendChild(timeEstimate);
+    }
+    
+    // Add resources if available
+    if (project.resources && project.resources.length > 0) {
+      const resources = document.createElement('div');
+      resources.className = 'resources';
+      resources.innerHTML = '<strong>Resources:</strong>';
+      
+      const resourcesList = document.createElement('ul');
+      project.resources.forEach(resource => {
+        const li = document.createElement('li');
+        li.textContent = resource;
+        resourcesList.appendChild(li);
+      });
+      
+      resources.appendChild(resourcesList);
+      projectCard.appendChild(resources);
+    }
+    
+    // Append elements to project card
+    projectCard.appendChild(title);
+    projectCard.appendChild(difficulty);
+    projectCard.appendChild(description);
+    projectCard.appendChild(skillsTargeted);
+    
+    return projectCard;
+  }
+  
+  // Function to generate project ideas
+  function generateProjectIdeas() {
+    // This would ideally be generated by an LLM in a real implementation
+    // For now, we'll use predefined project templates
+    
+    const projectTemplates = [
+      {
+        title: "Personal Portfolio Website",
+        difficulty: "Beginner",
+        description: "Create a responsive personal portfolio website to showcase your projects and skills.",
+        skills_targeted: ["HTML", "CSS", "JavaScript", "Responsive Design"],
+        time_estimate: "2-3 weeks",
+        resources: ["MDN Web Docs", "CSS-Tricks", "FreeCodeCamp"]
+      },
+      {
+        title: "Task Management Application",
+        difficulty: "Intermediate",
+        description: "Build a full-stack task management app with user authentication and CRUD operations.",
+        skills_targeted: ["React", "Node.js", "Express", "MongoDB", "Authentication"],
+        time_estimate: "4-6 weeks",
+        resources: ["React Documentation", "MongoDB University", "Express.js Guide"]
+      },
+      {
+        title: "E-commerce Platform",
+        difficulty: "Advanced",
+        description: "Develop a complete e-commerce platform with product listings, cart functionality, and payment processing.",
+        skills_targeted: ["React", "Redux", "Node.js", "Express", "MongoDB", "Payment API"],
+        time_estimate: "8-10 weeks",
+        resources: ["Redux Documentation", "Stripe API Docs", "React Router Documentation"]
+      },
+      {
+        title: "Weather Dashboard",
+        difficulty: "Beginner",
+        description: "Create a weather dashboard that fetches and displays weather data from a public API.",
+        skills_targeted: ["JavaScript", "API Integration", "CSS", "HTML"],
+        time_estimate: "1-2 weeks",
+        resources: ["OpenWeather API", "JavaScript.info", "Axios Documentation"]
+      },
+      {
+        title: "Real-time Chat Application",
+        difficulty: "Intermediate",
+        description: "Build a real-time chat application with private messaging and group chat functionality.",
+        skills_targeted: ["Socket.io", "React", "Node.js", "Express", "MongoDB"],
+        time_estimate: "4-5 weeks",
+        resources: ["Socket.io Documentation", "React Hooks Guide", "MongoDB Atlas"]
+      },
+      {
+        title: "Content Management System",
+        difficulty: "Advanced",
+        description: "Develop a CMS with user roles, content creation, editing, and publishing workflows.",
+        skills_targeted: ["React", "Node.js", "Express", "MongoDB", "Authentication", "Authorization"],
+        time_estimate: "8-12 weeks",
+        resources: ["JWT Authentication", "Role-Based Access Control", "Rich Text Editors"]
+      },
+      {
+        title: "Recipe Finder App",
+        difficulty: "Beginner",
+        description: "Create an app that allows users to search for recipes based on ingredients they have.",
+        skills_targeted: ["JavaScript", "API Integration", "CSS", "HTML"],
+        time_estimate: "2-3 weeks",
+        resources: ["Spoonacular API", "CSS Grid Layout", "JavaScript Fetch API"]
+      },
+      {
+        title: "Social Media Dashboard",
+        difficulty: "Intermediate",
+        description: "Build a dashboard that aggregates and displays data from multiple social media platforms.",
+        skills_targeted: ["React", "API Integration", "Data Visualization", "CSS"],
+        time_estimate: "5-7 weeks",
+        resources: ["Chart.js", "Twitter API", "Facebook Graph API"]
+      }
+    ];
+    
+    // Return 3 random projects
+    return projectTemplates.sort(() => 0.5 - Math.random()).slice(0, 3);
+  }
+})();

@@ -2,33 +2,52 @@ from crewai import Task
 
 class JobSkillTasks:
     def extraction_task(self, agent, job_description):
-        """
-        Creates a task for extracting skills from a job description.
-        """
         return Task(
             description=f"""
-            Analyze the following job description and extract:
-            1. All technical skills mentioned (programming languages, tools, platforms, etc.)
-            2. All soft skills mentioned (communication, leadership, etc.)
-            3. Key responsibilities of the role
-            4. Required experience level
-            5. Any other notable requirements
+            You are an expert in analyzing job descriptions and extracting structured data.
 
-            Job Description:
+            Given the following job description text, identify and extract the following:
+
+            1. **Company name** – The organization hiring for the role.
+            2. **Role or job title** – The official job title.
+            3. **Key skills** – List technical and soft skills mentioned. These should be specific abilities or knowledge areas.
+            4. **Requirements** – List qualifications like education, experience, certifications, etc.
+            5. **Salary or compensation** – If provided, include it exactly as mentioned.
+
+            IMPORTANT GUIDELINES:
+            - ONLY use what's explicitly mentioned in the text. Do NOT guess.
+            - Avoid repetition or redundancy in skills (e.g., don't list "communication skills" and "excellent communication" separately)
+            - Experience and degree requirements should be listed under "requirements" not "key_skills"
+            - If salary is not mentioned, leave it as an empty string
+
+            Here is the job description:
             {job_description}
 
-            Format your response as a JSON object with the following structure:
+            IMPORTANT: You MUST return your answer as a valid JSON object with this exact structure:
             {{
-                "technical_skills": ["skill1", "skill2", ...],
-                "soft_skills": ["skill1", "skill2", ...],
-                "responsibilities": ["responsibility1", "responsibility2", ...],
-                "experience_level": "entry/mid/senior",
-                "other_requirements": ["requirement1", "requirement2", ...]
+                "company": "Company Name",
+                "role": "Job Title",
+                "key_skills": ["Skill 1", "Skill 2", ...],
+                "requirements": ["Requirement 1", "Requirement 2", ...],
+                "salary": "If mentioned, include it here. Otherwise leave empty."
             }}
+
+            Be concise and extract only what's present. Don't include unrelated or generic information.
+            Your response must be ONLY the JSON object, nothing else before or after.
+            """,
+            expected_output="""
+            A JSON object with the following structure:
+            {
+                "company": "Company Name",
+                "role": "Job Title",
+                "key_skills": ["Skill 1", "Skill 2", ...],
+                "requirements": ["Requirement 1", "Requirement 2", ...],
+                "salary": "Salary information if available"
+            }
             """,
             agent=agent
         )
-    
+
     def resume_analysis_task(self, agent, resume_text, extracted_job_skills):
         """
         Creates a task for analyzing a resume against job requirements.
@@ -41,9 +60,8 @@ class JobSkillTasks:
             {resume_text}
             
             Job Skills Required:
-            Technical Skills: {extracted_job_skills.get('technical_skills', [])}
-            Soft Skills: {extracted_job_skills.get('soft_skills', [])}
-            Other Requirements: {extracted_job_skills.get('other_requirements', [])}
+            Technical Skills: {extracted_job_skills.get('key_skills', [])}
+            Requirements: {extracted_job_skills.get('requirements', [])}
             
             Identify:
             1. Skills present in the resume
@@ -63,6 +81,21 @@ class JobSkillTasks:
                 "strengths": ["strength1", "strength2", ...],
                 "improvement_areas": ["area1", "area2", ...]
             }}
+            """,
+            expected_output="""
+            A JSON object with the following structure:
+            {
+                "present_skills": [
+                    {"name": "skill1", "type": "technical/soft", "level": "beginner/intermediate/advanced"},
+                    ...
+                ],
+                "missing_skills": [
+                    {"name": "skill1", "type": "technical/soft", "importance": "high/medium/low"},
+                    ...
+                ],
+                "strengths": ["strength1", "strength2", ...],
+                "improvement_areas": ["area1", "area2", ...]
+            }
             """,
             agent=agent
         )
@@ -102,6 +135,20 @@ class JobSkillTasks:
             
             Ensure the projects are practical, relevant to the person's career goals, and will effectively 
             demonstrate the missing skills to potential employers.
+            """,
+            expected_output="""
+            A JSON array of project objects:
+            [
+                {
+                    "title": "Project Title",
+                    "description": "Brief project description",
+                    "skills_targeted": ["skill1", "skill2", ...],
+                    "time_estimate": "X weeks/hours",
+                    "difficulty": "beginner/intermediate/advanced",
+                    "resources": ["resource1", "resource2", ...]
+                },
+                ...
+            ]
             """,
             agent=agent
         )
