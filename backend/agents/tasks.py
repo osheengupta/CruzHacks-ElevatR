@@ -33,27 +33,55 @@ class JobSkillTasks:
         """
         Creates a task for analyzing a resume against job requirements.
         """
+        # Extract and format the required skills for better comparison
+        technical_skills = extracted_job_skills.get('technical_skills', [])
+        soft_skills = extracted_job_skills.get('soft_skills', [])
+        other_requirements = extracted_job_skills.get('other_requirements', [])
+        
+        # Format the skills as a string with each skill on a new line for better visibility
+        technical_skills_str = '\n'.join([f'- {skill}' for skill in technical_skills]) if technical_skills else 'None provided'
+        soft_skills_str = '\n'.join([f'- {skill}' for skill in soft_skills]) if soft_skills else 'None provided'
+        other_requirements_str = '\n'.join([f'- {req}' for req in other_requirements]) if other_requirements else 'None provided'
+        
         return Task(
             description=f"""
-            Analyze the following resume and compare it with the extracted job skills:
+            You are a professional resume analyzer with expertise in identifying skills and matching them to job requirements.
+            Your task is to carefully analyze the resume text and identify skills that are EXPLICITLY mentioned.
             
-            Resume:
+            Resume Text to Analyze:
+            ```
             {resume_text}
+            ```
             
             Job Skills Required:
-            Technical Skills: {extracted_job_skills.get('technical_skills', [])}
-            Soft Skills: {extracted_job_skills.get('soft_skills', [])}
-            Other Requirements: {extracted_job_skills.get('other_requirements', [])}
             
-            Identify:
-            1. Skills present in the resume
-            2. Skills missing from the resume but required by jobs
-            3. Strength of existing skills (beginner, intermediate, advanced)
+            Technical Skills:
+            {technical_skills_str}
+            
+            Soft Skills:
+            {soft_skills_str}
+            
+            Other Requirements:
+            {other_requirements_str}
+            
+            STRICT ANALYSIS RULES - FOLLOW THESE EXACTLY:
+            1. ONLY identify skills that are EXPLICITLY mentioned in the resume using the exact words or very close synonyms.
+            2. DO NOT infer skills that aren't clearly stated - if you're unsure, mark it as missing.
+            3. For each skill you identify as present, you MUST include the exact text snippet from the resume as evidence.
+            4. Be extremely precise - false positives are worse than false negatives.
+            5. Check for exact matches first, then check for clear synonyms or alternative phrasings.
+            6. DO NOT list skills as present based on job titles alone without supporting evidence in the description.
+            
+            SKILL MATCHING PROCESS:
+            1. For each required skill, search for exact matches in the resume.
+            2. If no exact match, look for clear synonyms or alternative phrasings.
+            3. If still no match, mark as missing.
+            4. For each match, extract the relevant text snippet as evidence.
             
             Format your response as a JSON object with the following structure:
             {{
                 "present_skills": [
-                    {{"name": "skill1", "type": "technical/soft", "level": "beginner/intermediate/advanced"}},
+                    {{"name": "skill1", "type": "technical/soft", "level": "beginner/intermediate/advanced", "evidence": "exact text from resume"}},
                     ...
                 ],
                 "missing_skills": [
@@ -63,6 +91,9 @@ class JobSkillTasks:
                 "strengths": ["strength1", "strength2", ...],
                 "improvement_areas": ["area1", "area2", ...]
             }}
+            
+            FINAL VERIFICATION:
+            Before submitting your analysis, verify each skill you've marked as present by confirming the evidence directly quotes text from the resume.
             """,
             agent=agent
         )

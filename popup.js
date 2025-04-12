@@ -68,23 +68,60 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   
   function processJobDescription(jobData) {
-    // In a real implementation, this would call your backend API
-    // For now, we'll simulate the API call with a timeout
+    // Show loading state
+    const loadingText = document.querySelector('#savingText');
+    loadingText.textContent = 'Analyzing job description...';
     
-    // Mock API call
-    setTimeout(function() {
+    // Get the API base URL
+    const API_BASE_URL = "http://localhost:8000";
+    
+    // Call our backend API to extract skills from the job description
+    fetch(`${API_BASE_URL}/extract-job-skills`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        job_description: jobData.description,
+        job_title: jobData.title,
+        company: jobData.company
+      })
+    })
+    .then(response => response.json())
+    .then(data => {
       try {
-        // For demo purposes, we'll extract some basic info
+        console.log('Backend response:', data);
+        
+        // Check if there's an error
+        if (data.error) {
+          // Check if it's an OpenAI API error
+          if (data.error.includes('OpenAI')) {
+            throw new Error('AI Service Error: There was an issue with the AI service. Please try again later.');
+          } else {
+            throw new Error(data.error);
+          }
+        }
+        
+        // Use the extracted skills from the backend
         const extractedData = {
           title: jobData.title || "Software Engineer",
           company: jobData.company || "Tech Company",
-          skills: ["JavaScript", "React", "Node.js", "API Design", "Problem Solving"]
+          skills: data.skills || []
         };
         
+        // If no skills were extracted, use some common skills based on the job title
+        if (extractedData.skills.length === 0) {
+          console.log('No skills extracted, using fallback skills');
+          extractedData.skills = getDefaultSkillsForJobTitle(jobData.title);
+        }
+        
         // Save to local storage
-        chrome.storage.local.get({savedJobs: []}, function(data) {
+        chrome.storage.local.get({savedJobs: [], skillFrequency: {}}, function(data) {
           const savedJobs = data.savedJobs;
-          savedJobs.push({
+          const skillFreq = data.skillFrequency || {};
+          
+          // Add the new job
+          const newJob = {
             id: Date.now(),
             url: jobData.url,
             title: extractedData.title,
@@ -92,9 +129,20 @@ document.addEventListener('DOMContentLoaded', function() {
             description: jobData.description,
             skills: extractedData.skills,
             dateAdded: new Date().toISOString()
+          };
+          
+          console.log('Saving job with skills:', newJob.skills);
+          savedJobs.push(newJob);
+          
+          // Update skill frequency counter
+          extractedData.skills.forEach(skill => {
+            const skillName = typeof skill === 'string' ? skill : skill.name;
+            skillFreq[skillName] = (skillFreq[skillName] || 0) + 1;
+            console.log(`Updated skill frequency for ${skillName}: ${skillFreq[skillName]}`);
           });
           
-          chrome.storage.local.set({savedJobs: savedJobs}, function() {
+          // Save both the updated jobs and skill frequency
+          chrome.storage.local.set({savedJobs: savedJobs, skillFrequency: skillFreq}, function() {
             // Update UI with extracted info
             jobTitle.textContent = extractedData.title;
             companyName.textContent = extractedData.company;
@@ -112,8 +160,71 @@ document.addEventListener('DOMContentLoaded', function() {
           });
         });
       } catch (err) {
+        console.error('Error processing extracted data:', err);
         showError("Error processing job description: " + err.message);
       }
-    }, 1500); // Simulate API delay
+    })
+    .catch(err => {
+      console.error('Error calling backend API:', err);
+      
+      // Fallback to local processing if backend call fails
+      try {
+        loadingText.textContent = 'Using local processing...';
+        
+        // Extract basic info and use default skills based on job title
+        const extractedData = {
+          title: jobData.title || "Software Engineer",
+          company: jobData.company || "Tech Company",
+          skills: getDefaultSkillsForJobTitle(jobData.title)
+        };
+        
+        // Save to local storage
+        chrome.storage.local.get({savedJobs: [], skillFrequency: {}}, function(data) {
+          const savedJobs = data.savedJobs;
+          const skillFreq = data.skillFrequency || {};
+          
+          // Add the new job
+          const newJob = {
+            id: Date.now(),
+            url: jobData.url,
+            title: extractedData.title,
+            company: extractedData.company,
+            description: jobData.description,
+            skills: extractedData.skills,
+            dateAdded: new Date().toISOString()
+          };
+          
+          console.log('Saving job with fallback skills:', newJob.skills);
+          savedJobs.push(newJob);
+          
+          // Update skill frequency counter
+          extractedData.skills.forEach(skill => {
+            const skillName = typeof skill === 'string' ? skill : skill.name;
+            skillFreq[skillName] = (skillFreq[skillName] || 0) + 1;
+          });
+          
+          // Save both the updated jobs and skill frequency
+          chrome.storage.local.set({savedJobs: savedJobs, skillFrequency: skillFreq}, function() {
+            // Update UI with extracted info
+            jobTitle.textContent = extractedData.title;
+            companyName.textContent = extractedData.company;
+            
+            // Clear and populate skills list
+            skillsList.innerHTML = '';
+            extractedData.skills.forEach(function(skill) {
+              const li = document.createElement('li');
+              li.textContent = typeof skill === 'string' ? skill : skill.name;
+              skillsList.appendChild(li);
+            });
+            
+            // Show success view
+            showView(successView);
+          });
+        });
+      } catch (err) {
+        console.error('Error in fallback processing:', err);
+        showError("Error processing job description: " + err.message);
+      }
+    });
   }
 });

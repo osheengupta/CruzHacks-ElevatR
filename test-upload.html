@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test File Upload</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    button {
+      padding: 10px 15px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+    input[type="file"] {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>Test File Upload</h1>
+  
+  <button id="uploadBtn">Upload File</button>
+  <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.txt">
+  
+  <div id="result" style="margin-top: 20px;"></div>
+  
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const uploadBtn = document.getElementById('uploadBtn');
+      const fileInput = document.getElementById('fileInput');
+      const result = document.getElementById('result');
+      
+      console.log('Upload button exists:', !!uploadBtn);
+      console.log('File input exists:', !!fileInput);
+      
+      uploadBtn.addEventListener('click', function() {
+        console.log('Upload button clicked');
+        fileInput.click();
+      });
+      
+      fileInput.addEventListener('change', function(event) {
+        console.log('File input change event triggered');
+        const file = event.target.files[0];
+        if (!file) {
+          console.log('No file selected');
+          result.textContent = 'No file selected';
+          return;
+        }
+        
+        console.log('File selected:', file.name, file.type);
+        result.textContent = `File selected: ${file.name} (${file.type})`;
+        
+        // Read file content
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          console.log('File read successfully, length:', e.target.result.length);
+          const preview = e.target.result.substring(0, 100) + '...';
+          const preElement = document.createElement('pre');
+          preElement.textContent = `Preview: ${preview}`;
+          result.appendChild(preElement);
+        };
+        reader.readAsText(file);
+      });
+    });
+  </script>
+</body>
+</html>

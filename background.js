@@ -42,7 +42,14 @@ async function processJobWithCrewAI(jobData) {
     
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`API error: ${response.status} - ${errorText}`);
+      console.error(`API error: ${response.status} - ${errorText}`);
+      
+      // Check if it's an OpenAI API error
+      if (errorText.includes('OpenAI')) {
+        throw new Error('AI Service Error: There was an issue with the AI service. Please try again later.');
+      } else {
+        throw new Error(`API error: ${response.status} - ${errorText}`);
+      }
     }
     
     const data = await response.json();

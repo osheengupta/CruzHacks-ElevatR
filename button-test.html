@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Button Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .button {
+            padding: 10px 15px;
+            background-color: #4285f4;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .button:hover {
+            background-color: #3367d6;
+        }
+        .message {
+            margin: 20px 0;
+            padding: 10px;
+            border-radius: 4px;
+            background-color: #f1f1f1;
+        }
+        #output {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            min-height: 100px;
+        }
+        .active {
+            background-color: #34a853;
+        }
+        input {
+            padding: 8px;
+            width: 80%;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Button Test</h1>
+    <p>This page tests basic button functionality to isolate any issues.</p>
+    
+    <div>
+        <h2>Chat Mode</h2>
+        <button id="generalBtn" class="button active">General Chat</button>
+        <button id="paperBtn" class="button">Paper Summary</button>
+        <button id="roadmapBtn" class="button">Skill Roadmap</button>
+    </div>
+    
+    <div>
+        <h2>Message Input</h2>
+        <input type="text" id="messageInput" placeholder="Type a message...">
+        <button id="sendBtn" class="button">Send</button>
+    </div>
+    
+    <div id="output">
+        <p>Button clicks will show here...</p>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Get DOM elements
+            const generalBtn = document.getElementById('generalBtn');
+            const paperBtn = document.getElementById('paperBtn');
+            const roadmapBtn = document.getElementById('roadmapBtn');
+            const messageInput = document.getElementById('messageInput');
+            const sendBtn = document.getElementById('sendBtn');
+            const output = document.getElementById('output');
+            
+            // Log elements to check if they exist
+            console.log('Elements:', {
+                generalBtn, paperBtn, roadmapBtn, messageInput, sendBtn, output
+            });
+            
+            // Function to log messages to the output div and console
+            function logMessage(message) {
+                const p = document.createElement('p');
+                p.textContent = message;
+                output.appendChild(p);
+                console.log(message);
+            }
+            
+            // Function to set active button
+            function setActiveButton(activeBtn) {
+                // Remove active class from all buttons
+                generalBtn.classList.remove('active');
+                paperBtn.classList.remove('active');
+                roadmapBtn.classList.remove('active');
+                
+                // Add active class to clicked button
+                activeBtn.classList.add('active');
+            }
+            
+            // Button click event handlers
+            generalBtn.addEventListener('click', function() {
+                logMessage('General Chat button clicked');
+                setActiveButton(generalBtn);
+            });
+            
+            paperBtn.addEventListener('click', function() {
+                logMessage('Paper Summary button clicked');
+                setActiveButton(paperBtn);
+            });
+            
+            roadmapBtn.addEventListener('click', function() {
+                logMessage('Skill Roadmap button clicked');
+                setActiveButton(roadmapBtn);
+            });
+            
+            // Send button event handler
+            sendBtn.addEventListener('click', function() {
+                const message = messageInput.value.trim();
+                if (message) {
+                    logMessage('Message sent: ' + message);
+                    messageInput.value = '';
+                } else {
+                    logMessage('Please enter a message');
+                }
+            });
+            
+            // Enter key event handler
+            messageInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    const message = messageInput.value.trim();
+                    if (message) {
+                        logMessage('Message sent (Enter key): ' + message);
+                        messageInput.value = '';
+                    } else {
+                        logMessage('Please enter a message');
+                    }
+                }
+            });
+            
+            // Log initial state
+            logMessage('Test page loaded successfully');
+        });
+    </script>
+</body>
+</html>
