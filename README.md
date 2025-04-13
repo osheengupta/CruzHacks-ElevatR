@@ -1,4 +1,4 @@
-# JobSkillTracker - CruzHacks Project
+# ElevatR - AI-Powered Career Development Platform
 
 A Chrome extension that helps students track job skills from descriptions and get personalized project recommendations to enhance their resumes.
 
@@ -49,7 +49,7 @@ pip install -r requirements.txt
 
 3. Set up your environment variables:
    - Copy the `.env.example` file to `.env`
-   - Add your OpenAI API key to the `.env` file
+   - Add your Gemini API key to the `.env` file
 
 4. Run the API server:
 ```bash
@@ -61,7 +61,7 @@ The API will be available at `http://localhost:8000`.
 ## Usage
 
 1. Browse job listings on sites like LinkedIn, Indeed, or Glassdoor
-2. Click the JobSkillTracker extension icon and select "Save Job Description"
+2. Click the ElevatR extension icon and select "Save Job Description"
 3. The extension will extract skills and save the job information
 4. Click "View Dashboard" to see your saved jobs and skill analysis
 5. Upload your resume to identify skill gaps
@@ -73,7 +73,6 @@ The API will be available at `http://localhost:8000`.
 - **Backend**: Python, FastAPI, CrewAI, LangChain
 - **AI**: 
   - Google Gemini API (primary for chat and resume analysis)
-  - OpenAI GPT models (fallback)
   - Vectara (for interview question generation and document search)
 - **Storage**: Chrome Extension Storage API
 
