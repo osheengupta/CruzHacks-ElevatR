@@ -71,7 +71,10 @@ The API will be available at `http://localhost:8000`.
 
 - **Frontend**: HTML, CSS, JavaScript, Chart.js
 - **Backend**: Python, FastAPI, CrewAI, LangChain
-- **AI**: OpenAI GPT models
+- **AI**: 
+  - Google Gemini API (primary for chat and resume analysis)
+  - OpenAI GPT models (fallback)
+  - Vectara (for interview question generation and document search)
 - **Storage**: Chrome Extension Storage API
 
 ## Project Structure
