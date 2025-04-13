@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "JobSkillTracker",
+  "name": "ElevatR",
   "version": "1.0",
-  "description": "Track job skills from descriptions and get personalized project recommendations",
+  "description": "AI-powered career development platform to analyze resumes and get personalized project recommendations",
   "permissions": ["activeTab", "storage", "scripting"],
   "action": {
     "default_popup": "popup.html",

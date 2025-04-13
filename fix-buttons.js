@@ -291,11 +291,11 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('Resume analysis completed');
         
         // Store resume data for other components
-        if (window.jobSkillTrackerGlobal) {
-          window.jobSkillTrackerGlobal.resumeText = "Mock resume content";
-          window.jobSkillTrackerGlobal.resumeFileName = file.name;
-          window.jobSkillTrackerGlobal.isResumeUploaded = true;
-          window.jobSkillTrackerGlobal.resumeData = {
+        if (window.elevatrGlobal) {
+          window.elevatrGlobal.resumeText = "Mock resume content";
+          window.elevatrGlobal.resumeFileName = file.name;
+          window.elevatrGlobal.isResumeUploaded = true;
+          window.elevatrGlobal.resumeData = {
             rawText: "Mock resume content",
             fileName: file.name,
             analyzedData: {
@@ -306,7 +306,7 @@ document.addEventListener('DOMContentLoaded', function() {
           
           // Store in localStorage for persistence
           try {
-            localStorage.setItem('jobSkillTrackerResumeData', JSON.stringify(window.jobSkillTrackerGlobal.resumeData));
+            localStorage.setItem('elevatrResumeData', JSON.stringify(window.elevatrGlobal.resumeData));
             console.log('Resume data saved to localStorage');
           } catch (error) {
             console.error('Error saving resume data to localStorage:', error);

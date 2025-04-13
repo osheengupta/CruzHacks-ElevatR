@@ -58,10 +58,10 @@ let interviewState = {
 };
 
 // Check if there's resume data available in the global object (set by dashboard.js)
-if (window.jobSkillTrackerGlobal && window.jobSkillTrackerGlobal.resumeText) {
-  interviewState.resumeText = window.jobSkillTrackerGlobal.resumeText;
+if (window.elevatrGlobal && window.elevatrGlobal.resumeText) {
+  interviewState.resumeText = window.elevatrGlobal.resumeText;
   console.log('Found resume data in global object on interview-prep.js load:', 
-              window.jobSkillTrackerGlobal.resumeFileName);
+              window.elevatrGlobal.resumeFileName);
 }
 
 // Initialize the module
@@ -120,28 +120,30 @@ async function initInterviewPrep() {
 // Function to check for resume data in localStorage
 function checkForResumeData() {
   try {
-    // Try to get data from the new key first
-    let storedResumeData = localStorage.getItem('jobSkillTrackerResumeData');
-    
-    // If not found, try the old key as fallback
-    if (!storedResumeData) {
-      storedResumeData = localStorage.getItem('resumeData');
-    }
-    
-    // If still not found, try sessionStorage
-    if (!storedResumeData) {
-      storedResumeData = sessionStorage.getItem('jobSkillTrackerResumeData');
-    }
+    // Try to get resume data from localStorage
+    let storedResumeData = localStorage.getItem('elevatrResumeData');
     
     if (storedResumeData) {
-      const resumeData = JSON.parse(storedResumeData);
-      if (resumeData.rawText) {
-        interviewState.resumeText = resumeData.rawText;
-        console.log('Resume data found in storage:', resumeData.fileName || 'resume');
-        return true; // Successfully found resume data
+      const parsedData = JSON.parse(storedResumeData);
+      if (parsedData && parsedData.rawText) {
+        interviewState.resumeText = parsedData.rawText;
+        console.log('Found resume data in localStorage:', parsedData.fileName || 'unnamed');
+        return true;
       }
     }
-    return false; // No resume data found
+    
+    // Fallback to sessionStorage
+    storedResumeData = sessionStorage.getItem('elevatrResumeData');
+    if (storedResumeData) {
+      const parsedData = JSON.parse(storedResumeData);
+      if (parsedData && parsedData.rawText) {
+        interviewState.resumeText = parsedData.rawText;
+        console.log('Found resume data in sessionStorage:', parsedData.fileName || 'unnamed');
+        return true;
+      }
+    }
+    
+    return false;
   } catch (error) {
     console.error('Error checking for resume data:', error);
     return false;
@@ -183,7 +185,7 @@ function showInterviewPrepModal() {
   
   // Get the latest resume text if available
   try {
-    const storedResumeData = localStorage.getItem('resumeData');
+    const storedResumeData = localStorage.getItem('elevatrResumeData');
     if (storedResumeData) {
       const resumeData = JSON.parse(storedResumeData);
       if (resumeData.rawText) {
@@ -431,9 +433,9 @@ async function startInterview(event) {
   }
   
   // PRIORITY 1: Check global variable first (most direct and reliable)
-  if (window.jobSkillTrackerGlobal && window.jobSkillTrackerGlobal.resumeText) {
-    interviewState.resumeText = window.jobSkillTrackerGlobal.resumeText;
-    console.log('Using resume data from global variable:', window.jobSkillTrackerGlobal.resumeFileName);
+  if (window.elevatrGlobal && window.elevatrGlobal.resumeText) {
+    interviewState.resumeText = window.elevatrGlobal.resumeText;
+    console.log('Using resume data from global variable:', window.elevatrGlobal.resumeFileName);
   } else {
     // PRIORITY 2: Force a check for resume data in storage as backup
     const resumeFound = checkForResumeData();
@@ -441,8 +443,8 @@ async function startInterview(event) {
     // Debug output to console
     console.log('Resume text available after check:', !!interviewState.resumeText);
     console.log('Resume found in storage:', resumeFound);
-    console.log('Global resume data available:', !!window.jobSkillTrackerGlobal?.resumeText);
-    console.log('localStorage jobSkillTrackerResumeData:', localStorage.getItem('jobSkillTrackerResumeData'));
+    console.log('Global resume data available:', !!window.elevatrGlobal?.resumeText);
+    console.log('localStorage elevatrResumeData:', localStorage.getItem('elevatrResumeData'));
   }
   
   // HARD-CODE A BYPASS FOR TESTING

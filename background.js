@@ -1,11 +1,11 @@
-// Background script for JobSkillTracker extension
+// Background script for ElevatR extension
 
 // Backend API URL
 const API_BASE_URL = "http://localhost:8005";
 
 // Listen for installation
 chrome.runtime.onInstalled.addListener(function() {
-  console.log("JobSkillTracker extension installed");
+  console.log("ElevatR extension installed");
   
   // Initialize storage with empty arrays
   chrome.storage.local.set({

@@ -1,4 +1,4 @@
-// Speech Utilities for JobSkillTracker
+// Speech Utilities for ElevatR
 // This module provides text-to-speech and speech recognition utilities
 
 // Text-to-Speech Configuration

@@ -1,5 +1,5 @@
 // Global resume data object that can be accessed by all components
-window.jobSkillTrackerGlobal = window.jobSkillTrackerGlobal || {
+window.elevatrGlobal = window.elevatrGlobal || {
   resumeData: null,
   resumeText: null,
   resumeFileName: null,
@@ -12,14 +12,14 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // Check if we have resume data in storage and restore it to the global object
   try {
-    const storedData = localStorage.getItem('jobSkillTrackerResumeData') || localStorage.getItem('resumeData');
+    const storedData = localStorage.getItem('elevatrResumeData') || localStorage.getItem('resumeData');
     if (storedData) {
       const parsedData = JSON.parse(storedData);
       if (parsedData.rawText) {
-        window.jobSkillTrackerGlobal.resumeText = parsedData.rawText;
-        window.jobSkillTrackerGlobal.resumeFileName = parsedData.fileName || 'resume';
-        window.jobSkillTrackerGlobal.isResumeUploaded = true;
-        window.jobSkillTrackerGlobal.resumeData = parsedData;
+        window.elevatrGlobal.resumeText = parsedData.rawText;
+        window.elevatrGlobal.resumeFileName = parsedData.fileName || 'resume';
+        window.elevatrGlobal.isResumeUploaded = true;
+        window.elevatrGlobal.resumeData = parsedData;
         console.log('Restored resume data to global object on page load:', parsedData.fileName);
       }
     }
@@ -630,19 +630,19 @@ document.addEventListener('DOMContentLoaded', function() {
       };
       
       // IMPORTANT: Update the global variable directly so interview-prep.js can access it
-      window.jobSkillTrackerGlobal.resumeText = resumeText;
-      window.jobSkillTrackerGlobal.resumeFileName = file.name;
-      window.jobSkillTrackerGlobal.isResumeUploaded = true;
-      window.jobSkillTrackerGlobal.resumeData = resumeData;
+      window.elevatrGlobal.resumeText = resumeText;
+      window.elevatrGlobal.resumeFileName = file.name;
+      window.elevatrGlobal.isResumeUploaded = true;
+      window.elevatrGlobal.resumeData = resumeData;
       
       // Log what we're storing to help with debugging
       console.log('Storing resume data in global variable and localStorage:', resumeData);
       
       // Store in localStorage
-      localStorage.setItem('jobSkillTrackerResumeData', JSON.stringify(resumeData));
+      localStorage.setItem('elevatrResumeData', JSON.stringify(resumeData));
       
       // Also store in sessionStorage as a backup
-      sessionStorage.setItem('jobSkillTrackerResumeData', JSON.stringify(resumeData));
+      sessionStorage.setItem('elevatrResumeData', JSON.stringify(resumeData));
       
       // Call the CrewAI backend to analyze the resume
       if (extractedJobSkills) {
@@ -665,15 +665,15 @@ document.addEventListener('DOMContentLoaded', function() {
         resumeData = data.result;
         
         // Update the stored resume data with analysis results
-        const storedData = JSON.parse(localStorage.getItem('jobSkillTrackerResumeData')) || {};
+        const storedData = JSON.parse(localStorage.getItem('elevatrResumeData')) || {};
         const updatedData = {
           ...storedData,
           analyzedData: resumeData
         };
         
         // Store updated data
-        localStorage.setItem('jobSkillTrackerResumeData', JSON.stringify(updatedData));
-        sessionStorage.setItem('jobSkillTrackerResumeData', JSON.stringify(updatedData));
+        localStorage.setItem('elevatrResumeData', JSON.stringify(updatedData));
+        sessionStorage.setItem('elevatrResumeData', JSON.stringify(updatedData));
         
         // Trigger a custom event to notify other parts of the application
         const resumeUploadEvent = new CustomEvent('resumeDataUpdated', { 
@@ -855,10 +855,10 @@ document.addEventListener('DOMContentLoaded', function() {
   // Function to generate project recommendations and learning resources
   async function generateRecommendations() {
     console.log('generateRecommendations called');
-    console.log('window.jobSkillTrackerGlobal:', window.jobSkillTrackerGlobal);
+    console.log('window.elevatrGlobal:', window.elevatrGlobal);
     
     // Always use the global object for resume data
-    const globalResumeData = window.jobSkillTrackerGlobal.resumeData;
+    const globalResumeData = window.elevatrGlobal.resumeData;
     
     if (!globalResumeData || !globalResumeData.analyzedData) {
       alert('Please upload your resume first');
