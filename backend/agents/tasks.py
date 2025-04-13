@@ -2,6 +2,9 @@ from crewai import Task
 
 class JobSkillTasks:
     def extraction_task(self, agent, job_description):
+        """
+        Creates a task for extracting structured data from job descriptions.
+        """
         return Task(
             description=f"""
             You are an expert in analyzing job descriptions and extracting structured data.
@@ -83,19 +86,7 @@ class JobSkillTasks:
             }}
             """,
             expected_output="""
-            A JSON object with the following structure:
-            {
-                "present_skills": [
-                    {"name": "skill1", "type": "technical/soft", "level": "beginner/intermediate/advanced"},
-                    ...
-                ],
-                "missing_skills": [
-                    {"name": "skill1", "type": "technical/soft", "importance": "high/medium/low"},
-                    ...
-                ],
-                "strengths": ["strength1", "strength2", ...],
-                "improvement_areas": ["area1", "area2", ...]
-            }
+            A JSON object with the structure described above.
             """,
             agent=agent
         )
@@ -137,18 +128,7 @@ class JobSkillTasks:
             demonstrate the missing skills to potential employers.
             """,
             expected_output="""
-            A JSON array of project objects:
-            [
-                {
-                    "title": "Project Title",
-                    "description": "Brief project description",
-                    "skills_targeted": ["skill1", "skill2", ...],
-                    "time_estimate": "X weeks/hours",
-                    "difficulty": "beginner/intermediate/advanced",
-                    "resources": ["resource1", "resource2", ...]
-                },
-                ...
-            ]
+            A JSON array of project objects as described above.
             """,
             agent=agent
         )

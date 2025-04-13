@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .result { margin: 10px 0; padding: 10px; border: 1px solid #ddd; }
+        .success { color: green; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>Dashboard Test</h1>
+    <div id="results"></div>
+
+    <script>
+        const resultsDiv = document.getElementById('results');
+        const API_BASE_URL = "http://localhost:8001";
+
+        function addResult(message, isSuccess = true) {
+            const div = document.createElement('div');
+            div.className = `result ${isSuccess ? 'success' : 'error'}`;
+            div.textContent = message;
+            resultsDiv.appendChild(div);
+        }
+
+        // Test API connection
+        fetch(`${API_BASE_URL}/openapi.json`)
+            .then(response => {
+                if (response.ok) {
+                    addResult("✅ API connection successful");
+                } else {
+                    addResult(`❌ API connection failed: ${response.status}`, false);
+                }
+            })
+            .catch(error => {
+                addResult(`❌ API connection error: ${error.message}`, false);
+            });
+
+        // Test chat endpoint
+        fetch(`${API_BASE_URL}/chat`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                message: "Hello",
+                chat_history: [],
+                mode: "general"
+            })
+        })
+        .then(response => {
+            if (response.ok) {
+                addResult("✅ Chat endpoint working");
+                return response.json();
+            } else {
+                addResult(`❌ Chat endpoint failed: ${response.status}`, false);
+                throw new Error(`Status: ${response.status}`);
+            }
+        })
+        .then(data => {
+            console.log("Chat response:", data);
+        })
+        .catch(error => {
+            addResult(`❌ Chat error: ${error.message}`, false);
+        });
+
+        // Test resume analysis endpoint
+        fetch(`${API_BASE_URL}/analyze-resume`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                resume_text: "Test resume content",
+                extracted_job_skills: {
+                    technical_skills: ["Python", "JavaScript"],
+                    soft_skills: ["Communication"]
+                }
+            })
+        })
+        .then(response => {
+            if (response.ok) {
+                addResult("✅ Resume analysis endpoint working");
+                return response.json();
+            } else {
+                addResult(`❌ Resume analysis endpoint failed: ${response.status}`, false);
+                throw new Error(`Status: ${response.status}`);
+            }
+        })
+        .then(data => {
+            console.log("Resume analysis response:", data);
+        })
+        .catch(error => {
+            addResult(`❌ Resume analysis error: ${error.message}`, false);
+        });
+    </script>
+</body>
+</html>

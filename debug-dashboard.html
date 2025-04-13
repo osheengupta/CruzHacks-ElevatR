@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Debug</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        button { padding: 8px 15px; background: #4285f4; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        pre { background: #f5f5f5; padding: 10px; border-radius: 4px; overflow: auto; }
+        .success { color: green; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>JobSkillTracker Dashboard Debug</h1>
+    
+    <div class="test-section">
+        <h2>1. API Connection Test</h2>
+        <button id="testApiBtn">Test API Connection</button>
+        <div id="apiResult"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>2. Saved Jobs Test</h2>
+        <button id="testSavedJobsBtn">Test Saved Jobs</button>
+        <div id="savedJobsResult"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>3. Resume Upload Test</h2>
+        <button id="testResumeBtn">Test Resume Upload</button>
+        <div id="resumeResult"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>4. AI Chat Test</h2>
+        <button id="testChatBtn">Test AI Chat</button>
+        <div id="chatResult"></div>
+    </div>
+    
+    <script>
+        const API_BASE_URL = "http://localhost:8001";
+        
+        // Test API Connection
+        document.getElementById('testApiBtn').addEventListener('click', async function() {
+            const resultDiv = document.getElementById('apiResult');
+            resultDiv.innerHTML = '<p>Testing API connection...</p>';
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/openapi.json`);
+                if (response.ok) {
+                    resultDiv.innerHTML = '<p class="success">✅ API connection successful!</p>';
+                } else {
+                    resultDiv.innerHTML = `<p class="error">❌ API connection failed: ${response.status} ${response.statusText}</p>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<p class="error">❌ API connection error: ${error.message}</p>`;
+            }
+        });
+        
+        // Test Saved Jobs
+        document.getElementById('testSavedJobsBtn').addEventListener('click', function() {
+            const resultDiv = document.getElementById('savedJobsResult');
+            resultDiv.innerHTML = '<p>Testing saved jobs functionality...</p>';
+            
+            try {
+                // Check if we can access Chrome storage
+                if (typeof chrome !== 'undefined' && chrome.storage) {
+                    chrome.storage.local.get(['savedJobs'], function(result) {
+                        const savedJobs = result.savedJobs || [];
+                        resultDiv.innerHTML = `
+                            <p class="success">✅ Chrome storage accessible</p>
+                            <p>Found ${savedJobs.length} saved jobs</p>
+                            <pre>${JSON.stringify(savedJobs.slice(0, 2), null, 2)}</pre>
+                        `;
+                    });
+                } else {
+                    // Try localStorage as fallback
+                    const savedJobsStr = localStorage.getItem('savedJobs');
+                    const savedJobs = savedJobsStr ? JSON.parse(savedJobsStr) : [];
+                    
+                    resultDiv.innerHTML = `
+                        <p class="success">✅ localStorage accessible</p>
+                        <p>Found ${savedJobs.length} saved jobs</p>
+                        <pre>${JSON.stringify(savedJobs.slice(0, 2), null, 2)}</pre>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<p class="error">❌ Error accessing storage: ${error.message}</p>`;
+            }
+        });
+        
+        // Test Resume Upload
+        document.getElementById('testResumeBtn').addEventListener('click', async function() {
+            const resultDiv = document.getElementById('resumeResult');
+            resultDiv.innerHTML = '<p>Testing resume upload endpoint...</p>';
+            
+            try {
+                const testResumeText = "John Doe\nSoftware Engineer\n\nSKILLS\nPython, JavaScript, React";
+                
+                const response = await fetch(`${API_BASE_URL}/analyze-resume`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        resume_text: testResumeText,
+                        extracted_job_skills: {
+                            technical_skills: ["Python", "JavaScript"],
+                            soft_skills: ["Communication"]
+                        }
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `
+                        <p class="success">✅ Resume analysis endpoint working</p>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <p class="error">❌ Resume analysis failed: ${response.status}</p>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<p class="error">❌ Error testing resume upload: ${error.message}</p>`;
+            }
+        });
+        
+        // Test AI Chat
+        document.getElementById('testChatBtn').addEventListener('click', async function() {
+            const resultDiv = document.getElementById('chatResult');
+            resultDiv.innerHTML = '<p>Testing AI chat endpoint...</p>';
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/chat`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: "Hello, can you help me learn Python?",
+                        chat_history: [],
+                        mode: "general"
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `
+                        <p class="success">✅ AI chat endpoint working</p>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <p class="error">❌ AI chat failed: ${response.status}</p>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<p class="error">❌ Error testing AI chat: ${error.message}</p>`;
+            }
+        });
+    </script>
+</body>
+</html>

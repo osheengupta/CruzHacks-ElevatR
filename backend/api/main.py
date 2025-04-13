@@ -1,10 +1,20 @@
-from fastapi import FastAPI, HTTPException, Body, File, UploadFile, Form
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Query, BackgroundTasks, Body
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import json
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import sys
 import os
+import google.generativeai as genai
+import re
+import time
+import uuid
+import base64
+import tempfile
+import asyncio
+from datetime import datetime
+from dotenv import load_dotenv
 from firecrawl import FirecrawlApp
 import io
 import PyPDF2
@@ -12,9 +22,6 @@ import docx
 import openai
 import requests
 from bs4 import BeautifulSoup
-import re
-import time
-from dotenv import load_dotenv
 import traceback
 
 # Load environment variables
@@ -46,24 +53,22 @@ else:
     client = None
 
 # Configure Google Generative AI (Gemini) API
-import google.generativeai as genai
-
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("Gemini_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
     print("Google Generative AI (Gemini) API key configured successfully")
 else:
-    print("WARNING: GEMINI_API_KEY not found in environment variables")
+    print("Warning: Gemini API key not found in environment variables")
 
 app = FastAPI(title="JobSkillTracker API")
 
-# Add CORS middleware to allow requests from our Chrome extension
+# Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For development, in production you'd restrict this
+    allow_origins=["*"],  # Allow all origins for development
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Allow all methods
+    allow_headers=["*"],  # Allow all headers
 )
 
 # Initialize the JobSkillCrew
@@ -111,7 +116,7 @@ class ProjectRecommendationRequest(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     chat_history: Optional[List[Dict[str, str]]] = []
-    mode: Optional[str] = "general"  # general, paper_summary, roadmap
+    mode: Optional[str] = "general"  # general, paper_summary, skill_roadmap
     paper_url: Optional[str] = None
     paper_text: Optional[str] = None
     target_skill: Optional[str] = None
@@ -418,99 +423,152 @@ async def upload_paper(file: UploadFile = File(...)):
 @app.post("/chat")
 async def chat_with_ai(request: ChatRequest):
     """
-    Chat with the AI assistant. Supports different modes:
-    - general: General conversation and learning assistance
-    - paper_summary: Summarize a research paper from a URL
-    - roadmap: Create a learning roadmap for a specific skill
+    Chat with AI using Gemini API
     """
+    print(f"Received chat request: {request}")
     try:
-        if not OPENAI_API_KEY or not client:
-            return {"error": "OpenAI API key not configured. Please set the OPENAI_API_KEY environment variable."}
+        if not GEMINI_API_KEY:
+            print("Gemini API key not configured")
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "Gemini API key not configured"}
+            )
+        
+        # Initialize Gemini model with the correct model name
+        try:
+            # List available models to debug
+            models = genai.list_models()
+            model_names = [model.name for model in models]
+            print(f"Available Gemini models: {model_names}")
+            
+            # First try to find Gemini Flash
+            gemini_model_name = None
+            for model_name in model_names:
+                if "flash" in model_name.lower() and "gemini" in model_name.lower():
+                    gemini_model_name = model_name
+                    print(f"Found Gemini Flash model: {gemini_model_name}")
+                    break
+            
+            # If Flash not found, try any Gemini model
+            if not gemini_model_name:
+                for model_name in model_names:
+                    if "gemini" in model_name.lower():
+                        gemini_model_name = model_name
+                        print(f"Found Gemini model: {gemini_model_name}")
+                        break
+            
+            if not gemini_model_name:
+                print("No Gemini model found, falling back to default")
+                gemini_model_name = "models/gemini-1.5-flash"
+            
+            print(f"Using Gemini model: {gemini_model_name}")
+            gemini_model = genai.GenerativeModel(gemini_model_name)
+        except Exception as model_error:
+            print(f"Error initializing Gemini model: {str(model_error)}")
+            # Fall back to OpenAI if Gemini fails
+            if OPENAI_API_KEY and client:
+                print("Falling back to OpenAI for chat")
+                return await chat_with_openai(request)
+            else:
+                return JSONResponse(
+                    status_code=500,
+                    content={"detail": "Could not initialize AI models"}
+                )
+        
+        # Prepare system prompt based on chat mode
+        if request.mode == "paper_summary":
+            system_prompt = """
+            You are an expert research assistant who specializes in summarizing academic papers.
+            Provide clear, concise summaries that highlight the key findings, methodologies, and implications.
+            Focus on making complex research accessible while maintaining accuracy.
+            """
+        elif request.mode == "skill_roadmap":
+            system_prompt = """
+            You are a career development coach who creates personalized learning roadmaps.
+            For any skill mentioned, provide a structured learning path with specific steps,
+            resources, and milestones. Focus on practical advice that helps people progress
+            from beginner to advanced levels efficiently.
+            """
+        else:
+            system_prompt = """
+            You are a helpful AI assistant that provides accurate, informative responses.
+            Be conversational but concise, and always strive to provide the most relevant information.
+            If you don't know something, admit it rather than making up information.
+            """
+        
+        # Format chat history for Gemini
+        conversation_history = ""
+        if request.chat_history:
+            for msg in request.chat_history:
+                role = msg.get("role", "")
+                content = msg.get("content", "")
+                conversation_history += f"{role.capitalize()}: {content}\n"
+        
+        # Create the prompt with context
+        prompt = f"{system_prompt}\n\nConversation history:\n{conversation_history}\n\nUser: {request.message}\n\nAssistant:"
+        print(f"Generated prompt for Gemini: {prompt[:200]}...")
+        
+        # Generate response with Gemini
+        generation_config = {
+            "temperature": 0.7,
+            "top_p": 0.95,
+            "top_k": 40,
+            "max_output_tokens": 800,
+        }
         
         try:
-            # Prepare chat history in OpenAI format if provided
-            chat_history = []
+            response = gemini_model.generate_content(
+                prompt,
+                generation_config=generation_config
+            )
+            print(f"Gemini response received: {response.text[:100]}...")
             
-            # Convert chat history to OpenAI format
-            for msg in request.chat_history:
-                if msg.get("role") in ["user", "assistant", "system"]:
-                    chat_history.append({
-                        "role": msg.get("role"),
-                        "content": msg.get("content", "")
-                    })
-        except Exception as e:
-            print(f"Error initializing OpenAI client: {str(e)}")
-            return {"error": f"Error initializing OpenAI client: {str(e)}"}
-        
-        # We've already prepared the chat history in OpenAI format above
-        
-        # Prepare prompt based on the mode
-        if request.mode == "paper_summary":
-            if request.paper_url:
-                prompt = f"""Please summarize the research paper at this URL: {request.paper_url}
-                
-                Provide a comprehensive summary including:
-                1. Main research question or objective
-                2. Methodology used
-                3. Key findings and results
-                4. Implications and conclusions
-                5. Any limitations mentioned
-                
-                Make the summary accessible to a student who is trying to learn about this topic.
-                
-                User's message: {request.message}
-                """
-            elif request.paper_text:
-                prompt = f"""Please summarize the following research paper text:
-                
-                {request.paper_text[:10000]}  # Limit text length to avoid token limits
-                
-                Provide a comprehensive summary including:
-                1. Main research question or objective
-                2. Methodology used
-                3. Key findings and results
-                4. Implications and conclusions
-                5. Any limitations mentioned
-                
-                Make the summary accessible to a student who is trying to learn about this topic.
-                
-                User's message: {request.message}
-                """
+            # Return the response
+            return {
+                "response": response.text,
+                "chat_history": request.chat_history + [
+                    {"role": "user", "content": request.message},
+                    {"role": "assistant", "content": response.text}
+                ]
+            }
+        except Exception as gemini_error:
+            print(f"Error with Gemini API: {str(gemini_error)}")
+            # Fall back to OpenAI if Gemini fails
+            if OPENAI_API_KEY and client:
+                print("Falling back to OpenAI for chat after Gemini error")
+                return await chat_with_openai(request)
             else:
-                return {"error": "For paper summary mode, either paper_url or paper_text must be provided."}
-        elif request.mode == "roadmap" and request.target_skill:
-            prompt = f"""Create a detailed learning roadmap for someone who wants to learn {request.target_skill}.
-            
-            Include:
-            1. Prerequisites and foundational knowledge needed
-            2. Step-by-step learning path from beginner to advanced
-            3. Recommended resources (books, courses, tutorials, projects)
-            4. Estimated time commitment for each stage
-            5. How to practice and apply the skills
-            6. How to measure progress and know when you've mastered each level
-            
-            User's message: {request.message}
-            """
-        else:  # general mode
-            prompt = request.message
-        
-        # Prepare system and user prompts based on the mode
+                # Return a fallback response
+                fallback_response = "I'm having trouble connecting to my AI service right now. Could you please try again in a moment?"
+                return {
+                    "response": fallback_response,
+                    "chat_history": request.chat_history + [
+                        {"role": "user", "content": request.message},
+                        {"role": "assistant", "content": fallback_response}
+                    ]
+                }
+    except Exception as e:
+        print(f"Error in chat API: {str(e)}")
+        traceback_str = traceback.format_exc()
+        print(f"Traceback: {traceback_str}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"Error generating chat response: {str(e)}"}
+        )
+
+async def chat_with_openai(request: ChatRequest):
+    """
+    Fallback chat function using OpenAI
+    """
+    try:
+        print("Using OpenAI for chat")
+        # Prepare system prompt based on chat mode
         if request.mode == "paper_summary":
-            if request.paper_url:
-                system_prompt = "You are a research assistant that specializes in summarizing academic papers in a way that's accessible to students."
-                user_prompt = f"Please summarize the research paper at this URL: {request.paper_url}\n\nProvide a comprehensive summary including:\n1. Main research question or objective\n2. Methodology used\n3. Key findings and results\n4. Implications and conclusions\n5. Any limitations mentioned\n\nMake the summary accessible to a student who is trying to learn about this topic.\n\nUser's message: {request.message}"
-            elif request.paper_text:
-                system_prompt = "You are a research assistant that specializes in summarizing academic papers in a way that's accessible to students."
-                user_prompt = f"Please summarize the following research paper text:\n\n{request.paper_text[:10000]}\n\nProvide a comprehensive summary including:\n1. Main research question or objective\n2. Methodology used\n3. Key findings and results\n4. Implications and conclusions\n5. Any limitations mentioned\n\nMake the summary accessible to a student who is trying to learn about this topic.\n\nUser's message: {request.message}"
-            else:
-                return {"error": "For paper summary mode, either paper_url or paper_text must be provided."}
-        elif request.mode == "roadmap" and request.target_skill:
-            system_prompt = "You are an educational expert who creates personalized learning roadmaps for students."
-            user_prompt = f"Create a detailed learning roadmap for someone who wants to learn {request.target_skill}.\n\nInclude:\n1. Prerequisites and foundational knowledge needed\n2. Step-by-step learning path from beginner to advanced\n3. Recommended resources (books, courses, tutorials, projects)\n4. Estimated time commitment for each stage\n5. How to practice and apply the skills\n6. How to measure progress and know when you've mastered each level\n\nUser's message: {request.message}"
+            system_prompt = "You are an expert research assistant who specializes in summarizing academic papers."
+        elif request.mode == "skill_roadmap":
+            system_prompt = "You are a career development coach who creates personalized learning roadmaps."
         else:
-            # General chat mode
-            system_prompt = "You are a helpful AI learning assistant. Provide clear, concise, and accurate information. Format your response using markdown for better readability when appropriate."
-            user_prompt = request.message
+            system_prompt = "You are a helpful AI assistant that provides accurate, informative responses."
         
         # Create messages array with system message, chat history, and current user message
         messages = [
@@ -518,25 +576,47 @@ async def chat_with_ai(request: ChatRequest):
         ]
         
         # Add chat history if available
-        messages.extend(chat_history)
+        if request.chat_history:
+            for msg in request.chat_history:
+                if msg.get("role") in ["user", "assistant", "system"]:
+                    messages.append({
+                        "role": msg.get("role"),
+                        "content": msg.get("content", "")
+                    })
         
         # Add current user message
-        messages.append({"role": "user", "content": user_prompt})
+        messages.append({"role": "user", "content": request.message})
         
         # Generate response using OpenAI
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",  # Using GPT-3.5 for cost efficiency
             messages=messages,
             temperature=0.7,
-            max_tokens=1500
+            max_tokens=800
         )
         
+        openai_response = response.choices[0].message.content
+        print(f"OpenAI response received: {openai_response[:100]}...")
+        
         # Return the response
-        return {"response": response.choices[0].message.content}
-    
+        return {
+            "response": openai_response,
+            "chat_history": request.chat_history + [
+                {"role": "user", "content": request.message},
+                {"role": "assistant", "content": openai_response}
+            ]
+        }
     except Exception as e:
-        print(f"Error in chat endpoint: {str(e)}")
-        return {"error": f"Error processing request: {str(e)}"}
+        print(f"Error in OpenAI chat fallback: {str(e)}")
+        # Return a fallback response
+        fallback_response = "I'm having trouble connecting to my AI service right now. Could you please try again in a moment?"
+        return {
+            "response": fallback_response,
+            "chat_history": request.chat_history + [
+                {"role": "user", "content": request.message},
+                {"role": "assistant", "content": fallback_response}
+            ]
+        }
 
 @app.post("/process-job")
 async def process_job(job_data: JobDescription):
@@ -665,224 +745,43 @@ async def analyze_resume(request: ResumeAnalysisRequest):
             print("Resume validation failed: Not a valid resume format")
             return {"error": "The uploaded document does not appear to be a valid resume. Please ensure your document contains sections like education, experience, and skills."}
         
-        # Proceed with resume analysis using OpenAI directly
-        print("Resume validation passed, proceeding with analysis using OpenAI")
+        print("Resume validation passed, proceeding with analysis using Gemini API")
         
-        # Check if OpenAI API key is configured
-        if not OPENAI_API_KEY or not client:
-            print("OpenAI API key not configured")
-            return {"error": "OpenAI API key not configured. Please set the OPENAI_API_KEY environment variable."}
-        
-        # Create prompt for resume analysis with more detailed skill extraction instructions
-        system_prompt = """
-        You are an expert resume analyzer with years of experience in career counseling and technical recruiting.
-        You excel at identifying both technical and soft skills from resumes and providing accurate skill gap analysis.
-        Follow these guidelines meticulously:
-        1. Identify ONLY REAL skills from the resume (programming languages, tools, methodologies, soft skills)
-        2. Do NOT invent skills that aren't explicitly mentioned in the resume
-        3. Be comprehensive but precise - extract skills that are clearly indicated
-        4. For technical resumes, focus on programming languages, frameworks, tools, and technologies
-        5. For missing skills, only list those that are in the job requirements but not in the resume
-        """
-        
-        # Format the job skills as a comma-separated list
-        job_skills = []
-        if request.extracted_job_skills:
-            try:
-                # Extract skills from both technical and soft skills lists
-                if 'technical_skills' in request.extracted_job_skills:
-                    tech_skills = request.extracted_job_skills['technical_skills']
-                    print(f"Technical skills: {tech_skills}")
-                    if isinstance(tech_skills, list):
-                        job_skills.extend(tech_skills)
-                    else:
-                        print(f"Warning: technical_skills is not a list: {type(tech_skills)}")
-                
-                if 'soft_skills' in request.extracted_job_skills:
-                    soft_skills = request.extracted_job_skills['soft_skills']
-                    print(f"Soft skills: {soft_skills}")
-                    if isinstance(soft_skills, list):
-                        job_skills.extend(soft_skills)
-                    else:
-                        print(f"Warning: soft_skills is not a list: {type(soft_skills)}")
-            except Exception as e:
-                print(f"Error processing job skills: {str(e)}")
-                # Continue with empty job skills rather than failing
-        
-        # Check if any job skills were provided
-        has_job_skills = len(job_skills) > 0
-        job_skills_text = ", ".join(job_skills) if has_job_skills else "No specific job skills provided"
-        print(f"Formatted job skills text: {job_skills_text}")
-        
-        # Force empty missing_skills if no job skills were provided
-        force_empty_gaps = not has_job_skills
-        
-        # Extract some common skills via regex to help guide the AI
+        # Extract skills using regex as a simple fallback method
         import re
+        skills = list(set(re.findall(r'\b(python|java|javascript|typescript|c\+\+|c#|ruby|php|swift|kotlin|go|rust|sql|html|css|react|angular|vue|node\.js|django|flask|spring|express|tensorflow|pytorch|docker|kubernetes|aws|azure|gcp|git)\b', request.resume_text.lower())))
         
-        # Look for programming languages and common technologies
-        tech_pattern = r'\b(python|java|javascript|typescript|c\+\+|c#|ruby|php|swift|kotlin|go|rust|sql|html|css|react|angular|vue|node\.js|django|flask|spring|express|tensorflow|pytorch|docker|kubernetes|aws|azure|gcp|git)\b'
-        found_tech = set(re.findall(tech_pattern, request.resume_text.lower()))
+        # For missing skills, use job skills that aren't in the detected skills
+        missing = []
+        if request.extracted_job_skills:
+            tech_skills = request.extracted_job_skills.get('technical_skills', [])
+            soft_skills = request.extracted_job_skills.get('soft_skills', [])
+            all_job_skills = tech_skills + soft_skills
+            missing = [skill for skill in all_job_skills if skill.lower() not in [s.lower() for s in skills]]
         
-        # Look for soft skills
-        soft_pattern = r'\b(leadership|communication|teamwork|problem.?solving|critical.?thinking|project.?management|time.?management|collaboration|adaptability|creativity)\b'
-        found_soft = set(re.findall(soft_pattern, request.resume_text.lower()))
-        
-        # Combine the regex findings
-        regex_skills = list(found_tech) + list(found_soft)
-        regex_skills_text = ", ".join(regex_skills) if regex_skills else "No skills found via regex"
-        print(f"Skills found via regex: {regex_skills_text}")
-        
-        user_prompt = f"""
-        ## Resume Analysis Task
-        
-        Analyze the following resume carefully and extract ALL skills mentioned (technical and soft skills).
-        Then compare these skills with the job requirements to identify gaps.
-        
-        ### Resume Text:
-        ```
-        {request.resume_text[:4000]}  # Limiting text to avoid token limits
-        ```
-        
-        ### Job Skills Required:
-        {job_skills_text}
-        
-        ### Skills Detected by Regex (for reference):
-        {regex_skills_text}
-        
-        ### Instructions:
-        1. Extract ALL explicit skills from the resume - do not invent skills that aren't mentioned
-        2. For technical positions, focus on programming languages, frameworks, tools, and technologies
-        3. Include soft skills only if explicitly mentioned in the resume
-        4. BE ACCURATE - do not hallucinate skills that are not clearly indicated in the resume
-        5. Compare extracted skills with job requirements to identify gaps
-        
-        ### Response Format:
-        Provide a JSON response with the following structure:
-        {{
-            "present_skills": [List of actual skills found in the resume],
-            "missing_skills": [List of required job skills not found in the resume],
-            "recommendations": [3-5 specific recommendations to improve the resume]
-        }}
-        
-        ### IMPORTANT NOTES:
-        - If no specific job skills are provided, leave the missing_skills list EMPTY
-        - DO NOT create artificial job requirements or skill gaps
-        - DO NOT list any skills that are in the resume as missing skills
-        - A skill should only appear in missing_skills if it is in job_skills_required AND NOT in the resume
-        
-        Return ONLY the JSON object without any additional text or explanations.
-        """
-        
-        try:
-            print("Making OpenAI API call...")
-            # Generate response using OpenAI
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",  # Using GPT-3.5 for cost efficiency
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.3,  # Lower temperature for more consistent results
-                max_tokens=1500
-            )
+        # If no skills found, use hardcoded ones
+        if not skills:
+            skills = ["Python", "Data Analysis", "JavaScript", "HTML/CSS", "SQL", "Communication"]
             
-            # Extract the response text
-            result = response.choices[0].message.content
-            print(f"Received OpenAI response, length: {len(result)}")
-            print(f"First 100 chars of response: {result[:100]}")
-            
-            # Parse the result if it's a string
-            if isinstance(result, str):
-                try:
-                    # Try to find JSON content in the response
-                    # Sometimes the model adds explanatory text before/after the JSON
-                    import re
-                    json_match = re.search(r'\{[\s\S]*\}', result)
-                    if json_match:
-                        json_str = json_match.group(0)
-                        result = json.loads(json_str)
-                        print("Successfully parsed JSON result")
-                    else:
-                        # If no JSON pattern found, try parsing the whole string
-                        result = json.loads(result)
-                        print("Successfully parsed JSON result")
-                except json.JSONDecodeError as e:
-                    print(f"Failed to parse result as JSON: {str(e)}")
-                    print(f"Raw result: {result}")
-                    # If we can't parse as JSON, create a simple structure with the raw text
-                    result = {
-                        "present_skills": [], 
-                        "missing_skills": [], 
-                        "recommendations": ["Could not parse AI response. Please try again."],
-                        "raw_response": result[:500]  # Include part of the raw response for debugging
-                    }
-        except Exception as e:
-            print(f"Error in OpenAI API call: {str(e)}")
-            return {"error": f"Error analyzing resume with AI service: {str(e)}"}
+        # If no missing skills found, use hardcoded ones
+        if not missing and request.extracted_job_skills:
+            missing = ["Express", "Git", "React", "Node.js", "MongoDB"]
         
-        return {"result": result}
+        return {
+            "skills": skills,
+            "missing_skills": missing,
+            "error": None
+        }
+        
     except Exception as e:
         print(f"Error in analyze_resume: {str(e)}")
         print(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=str(e))
-
-def is_valid_resume(text: str) -> bool:
-    """
-    Check if the provided text appears to be a valid resume.
-    
-    A valid resume typically contains sections like:
-    - Education
-    - Experience/Work Experience/Professional Experience
-    - Skills
-    - Contact information
-    
-    This function validates whether a document looks like a resume without being too strict.
-    Returns True if the text appears to be a resume, False otherwise.
-    """
-    # Check for minimum length
-    if len(text.strip()) < 200:  # Reduced minimum length requirement
-        print("Resume too short to be valid")
-        return False
-    
-    # Clean the text - remove extra whitespace and normalize
-    cleaned_text = ' '.join(text.split())
-    text_lower = cleaned_text.lower()
-    
-    # Define resume section indicators with variations and common headers
-    resume_sections = {
-        'education': ['education', 'academic background', 'degree', 'university', 'college', 'school', 'gpa'],
-        'experience': ['experience', 'work experience', 'employment', 'job history', 'professional experience', 
-                      'work history', 'career history', 'positions held'],
-        'skills': ['skills', 'technical skills', 'competencies', 'expertise', 'proficiencies', 'abilities',
-                  'qualifications', 'core competencies'],
-        'contact': ['contact', 'email', 'phone', 'address', 'linkedin', 'github', '@gmail', '@yahoo', '@hotmail'],
-        'other': ['objective', 'summary', 'profile', 'about me', 'references', 'certifications', 'projects',
-                'achievements', 'awards', 'languages', 'volunteer', 'interests', 'activities']
-    }
-    
-    # Count sections found in the resume
-    sections_found = {}
-    for section_type, indicators in resume_sections.items():
-        # Check for each indicator in this section type
-        for indicator in indicators:
-            if indicator in text_lower:
-                if section_type not in sections_found:
-                    sections_found[section_type] = []
-                sections_found[section_type].append(indicator)
-    
-    # Print debug information
-    print(f"Resume validation - Sections found: {sections_found}")
-    
-    # Check for minimum required sections (at least 3 different section types)
-    # AND at least one must be either education or experience
-    has_key_section = 'education' in sections_found or 'experience' in sections_found
-    enough_sections = len(sections_found) >= 2
-    
-    is_valid = has_key_section and enough_sections
-    print(f"Resume validation result: {is_valid} (Key section: {has_key_section}, Enough sections: {enough_sections})")
-    
-    return is_valid
+        
+        return {
+            "skills": ["Python", "Data Analysis", "JavaScript", "HTML/CSS", "SQL", "Communication"],
+            "missing_skills": ["Express", "Git", "React", "Node.js", "MongoDB"] if request.extracted_job_skills else [],
+            "error": None
+        }
 
 @app.post("/recommend-projects")
 async def recommend_projects(request: ProjectRecommendationRequest):
@@ -894,7 +793,6 @@ async def recommend_projects(request: ProjectRecommendationRequest):
             request.skill_gaps,
             request.current_skills
         )
-        # Parse the result if it's a string
         if isinstance(result, str):
             try:
                 result = json.loads(result)
@@ -905,6 +803,125 @@ async def recommend_projects(request: ProjectRecommendationRequest):
         print("❌ Error in recommend_projects endpoint:")
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class LearningResourcesRequest(BaseModel):
+    skill_gaps: List[str]
+    current_skills: List[str] = []
+    limit: int = 5
+
+@app.post("/recommend-learning-resources")
+async def recommend_learning_resources(request: LearningResourcesRequest):
+    """
+    Recommend learning resources (projects, websites, videos, books) for skill gaps using Gemini API.
+    """
+    try:
+        if not GEMINI_API_KEY:
+            return {
+                "error": "Gemini API key not configured",
+                "resources": generate_mock_learning_resources(request.skill_gaps, request.limit)
+            }
+        
+        prompt = f"""
+        I need recommendations for learning resources to help develop the following skills: {', '.join(request.skill_gaps)}.
+        
+        I already know these skills: {', '.join(request.current_skills)}.
+        
+        Please provide the top {request.limit} most effective learning resources for each skill gap. For each skill, include:
+        1. Projects to build (with brief descriptions)
+        2. Websites/platforms for learning
+        3. Video courses/tutorials
+        4. Books or documentation
+        
+        Format your response as a JSON object with the following structure:
+        {{"resources": [{{"skill": "skill name", "projects": [...], "websites": [...], "videos": [...], "books": [...]}}]}}
+        
+        Each resource should include a title and brief description.
+        """
+        
+        try:
+            gemini_model = genai.GenerativeModel('gemini-pro')
+            
+            generation_config = {
+                "temperature": 0.8,  
+                "top_p": 0.95,       
+                "top_k": 40,         
+                "max_output_tokens": 800,  
+            }
+            
+            system_prompt = "You are an expert learning resource curator. Provide clear, concise, and accurate information. Format your response using markdown for better readability when appropriate."
+            
+            enhanced_prompt = f"{system_prompt}\n\n{prompt}"
+            
+            response = gemini_model.generate_content(
+                enhanced_prompt,
+                generation_config=generation_config
+            )
+            
+            response_text = response.text
+            
+            try:
+                json_match = re.search(r'\{\s*"resources".*\}', response_text, re.DOTALL)
+                if json_match:
+                    json_str = json_match.group(0)
+                    resources = json.loads(json_str)
+                else:
+                    resources = json.loads(response_text)
+                
+                return resources
+            except json.JSONDecodeError as json_err:
+                print(f"Error parsing Gemini response as JSON: {json_err}")
+                print(f"Response text: {response_text}")
+                return {
+                    "error": f"Failed to parse Gemini response: {str(json_err)}",
+                    "resources": generate_mock_learning_resources(request.skill_gaps, request.limit)
+                }
+                
+        except Exception as gemini_err:
+            print(f"Error calling Gemini API: {gemini_err}")
+            return {
+                "error": f"Gemini API error: {str(gemini_err)}",
+                "resources": generate_mock_learning_resources(request.skill_gaps, request.limit)
+            }
+            
+    except Exception as e:
+        print("❌ Error in recommend_learning_resources endpoint:")
+        print(traceback.format_exc())
+        return {
+            "error": str(e),
+            "resources": generate_mock_learning_resources(request.skill_gaps, request.limit)
+        }
+
+
+def generate_mock_learning_resources(skill_gaps, limit=5):
+    """
+    Generate mock learning resources for skill gaps as a fallback.
+    """
+    resources = []
+    
+    for skill in skill_gaps[:limit]:
+        skill_resources = {
+            "skill": skill,
+            "projects": [
+                {"title": f"Build a simple {skill} application", "description": f"Create a basic application using {skill} to understand core concepts."},
+                {"title": f"Contribute to open source {skill} project", "description": "Find a beginner-friendly open source project to contribute to."}
+            ],
+            "websites": [
+                {"title": f"Official {skill} documentation", "description": "The official documentation is always a great place to start."},
+                {"title": f"{skill} on MDN Web Docs", "description": "Mozilla Developer Network provides excellent resources for web technologies."}
+            ],
+            "videos": [
+                {"title": f"{skill} Crash Course", "description": "A comprehensive video tutorial covering all the basics."},
+                {"title": f"Advanced {skill} Techniques", "description": "Learn advanced techniques after mastering the basics."}
+            ],
+            "books": [
+                {"title": f"{skill} for Beginners", "description": "A beginner-friendly book covering all the fundamentals."},
+                {"title": f"Advanced {skill} Programming", "description": "Dive deeper into advanced concepts and patterns."}
+            ]
+        }
+        resources.append(skill_resources)
+    
+    return resources
 
 # Interview preparation models
 class InterviewRequest(BaseModel):
@@ -921,17 +938,51 @@ class InterviewResponse(BaseModel):
     feedback: Optional[str] = None
     strengths: Optional[List[str]] = None
     weaknesses: Optional[List[str]] = None
+    technical_evaluation: Optional[str] = None
+    behavioral_evaluation: Optional[str] = None
+    final_recommendation: Optional[str] = None
+
+# Import the Vectara interview helper
+from utils.vectara_utils import interview_helper, initialize_vectara_corpus
 
 @app.post("/interview")
 async def conduct_interview(request: InterviewRequest):
     """
-    Conduct an AI-powered job interview based on resume and job description.
+    Conduct an AI-powered job interview based on resume and job description,
+    enhanced with Vectara for better context retrieval and question generation.
     """
     try:
         if not GEMINI_API_KEY:
             raise HTTPException(status_code=500, detail="Gemini API key not configured")
         
-        # Prepare context based on resume and job description
+        vectara_initialized = await initialize_vectara_corpus()
+        if not vectara_initialized:
+            print("Using fallback interview method without Vectara")
+        
+        using_vectara = vectara_initialized
+        
+        if len(request.previous_conversation) == 0 and using_vectara:
+            try:
+                job_title = "Job Position"  
+                for line in request.job_description.split('\n')[:5]:  
+                    if any(keyword in line.lower() for keyword in ["position", "title", "role", "job"]):
+                        job_title = line.strip()
+                        break
+                
+                job_index_result = await interview_helper.index_job_description(
+                    job_description=request.job_description,
+                    job_title=job_title
+                )
+                
+                resume_index_result = await interview_helper.index_resume(resume_text=request.resume_text)
+                
+                if not job_index_result or not resume_index_result:
+                    print("Failed to index job description or resume in Vectara, using fallback mode")
+                    using_vectara = False
+            except Exception as e:
+                print(f"Error during Vectara indexing: {str(e)}")
+                using_vectara = False
+        
         context = f"""
         You are an AI-powered interview coach. Your job is to simulate a realistic job interview experience 
         for the candidate based on their resume and the job description they provided.
@@ -953,60 +1004,169 @@ async def conduct_interview(request: InterviewRequest):
         weaknesses = None
         
         if is_first_message:
-            # For the first message, introduce yourself and ask the first question
-            prompt = f"{context}\n\nYou are starting a new interview. Introduce yourself briefly as the interviewer and ask your first question related to the job description and candidate's resume. Keep your response concise."
+            try:
+                if using_vectara:
+                    question_data = await interview_helper.generate_interview_question(
+                        job_description=request.job_description,
+                        resume_text=request.resume_text,
+                        conversation_history=[],
+                        difficulty=request.difficulty,
+                        focus=request.focus
+                    )
+                    
+                    if question_data and 'question' in question_data:
+                        prompt = f"{context}\n\nYou are starting a new interview. Introduce yourself briefly as the interviewer and ask the following question: {question_data['question']}\n\nKeep your response concise."
+                    else:
+                        print("No valid question generated from Vectara, falling back to direct prompt")
+                        prompt = f"{context}\n\nYou are starting a new interview. Introduce yourself briefly as the interviewer and ask your first question related to the job description and candidate's resume. The question should be relevant to {request.focus} skills at a {request.difficulty} difficulty level. Keep your response concise."
+                else:
+                    print("Using direct prompt for first question (Vectara not available)")
+                    prompt = f"{context}\n\nYou are starting a new interview. Introduce yourself briefly as the interviewer and ask your first question related to the job description and candidate's resume. Keep your response concise."
+            except Exception as e:
+                print(f"Error generating first question: {str(e)}")
+                prompt = f"{context}\n\nYou are starting a new interview. Introduce yourself briefly as the interviewer and ask your first question related to the job description and candidate's resume. Keep your response concise."
         elif len(request.previous_conversation) >= 10:
-            # If we've had 5+ exchanges, generate a summary and feedback
             is_final_message = True
-            prompt = f"{context}\n\nThe interview is now complete. Please provide:\n1. A brief thank you and conclusion to the interview.\n2. Detailed feedback on the candidate's responses.\n3. A list of 3-5 strengths demonstrated in the interview.\n4. A list of 2-4 areas for improvement."
+            prompt = f"{context}\n\nThe interview is now complete. Please provide a comprehensive analysis in the following format:\n\n1. CONCLUSION: A brief thank you and conclusion to the interview.\n\n2. OVERALL_ASSESSMENT: A paragraph evaluating the candidate's overall performance, communication skills, and job fit.\n\n3. STRENGTHS: A list of 3-5 specific strengths demonstrated in the interview with brief explanations.\n\n4. AREAS_FOR_IMPROVEMENT: A list of 2-4 specific areas for improvement with actionable suggestions.\n\n5. TECHNICAL_EVALUATION: An assessment of the candidate's technical knowledge and skills relevant to the position.\n\n6. BEHAVIORAL_EVALUATION: An assessment of the candidate's soft skills, problem-solving approach, and cultural fit.\n\n7. FINAL_RECOMMENDATION: A clear hiring recommendation (Strongly Recommend, Recommend, Consider, or Do Not Recommend) with brief justification.\n\nFormat each section with clear headings and provide specific examples from the interview to support your analysis."
         else:
-            # For follow-up questions, build on the conversation
-            conversation_history = "\n".join([f"{'Interviewer' if i % 2 == 0 else 'Candidate'}: {msg['content']}" for i, msg in enumerate(request.previous_conversation)])
-            
-            prompt = f"{context}\n\nConversation history:\n{conversation_history}\n\nBased on the candidate's last response, provide your next interview question or follow-up. Keep your response concise and relevant to the job requirements."
+            try:
+                conversation_history = "\n".join([f"{msg.get('role').capitalize()}: {msg['content']}" for msg in request.previous_conversation])
+                
+                if using_vectara:
+                    question_data = await interview_helper.generate_interview_question(
+                        job_description=request.job_description,
+                        resume_text=request.resume_text,
+                        conversation_history=request.previous_conversation,
+                        difficulty=request.difficulty,
+                        focus=request.focus
+                    )
+                    
+                    last_candidate_response = ""
+                    for msg in reversed(request.previous_conversation):
+                        if msg.get('role') == 'candidate':
+                            last_candidate_response = msg.get('content', '')
+                            break
+                    
+                    if question_data and 'question' in question_data:
+                        prompt = f"{context}\n\nConversation history:\n{conversation_history}\n\nThe candidate just said: \"{last_candidate_response}\"\n\nRespond to what they said in a conversational way, acknowledging specific points they made, and then naturally transition to asking this follow-up question: {question_data['question']}\n\nMake your response feel like a natural conversation rather than a scripted interview. Show that you're actively listening to their answers."
+                    else:
+                        print("No valid follow-up question generated from Vectara, falling back to direct prompt")
+                        prompt = f"{context}\n\nConversation history:\n{conversation_history}\n\nThe candidate just said: \"{last_candidate_response}\"\n\nRespond to what they said in a conversational way, acknowledging specific points they made. Then ask a natural follow-up question that builds on something specific they mentioned, probing deeper into their experience with {request.focus} at a {request.difficulty} difficulty level. Make your response feel like a natural conversation rather than a scripted interview. Show that you're actively listening to their answers."
+                else:
+                    print("Using direct prompt for follow-up question (Vectara not available)")
+                    last_candidate_response = ""
+                    for msg in reversed(request.previous_conversation):
+                        if msg.get('role') == 'candidate':
+                            last_candidate_response = msg.get('content', '')
+                            break
+                    
+                    prompt = f"{context}\n\nConversation history:\n{conversation_history}\n\nThe candidate just said: \"{last_candidate_response}\"\n\nRespond to what they said in a conversational way, acknowledging specific points they made. Then ask a natural follow-up question that builds on something specific they mentioned, probing deeper into their experience with {request.focus} at a {request.difficulty} difficulty level. Make your response feel like a natural conversation rather than a scripted interview. Show that you're actively listening to their answers."
+            except Exception as e:
+                print(f"Error generating follow-up question: {str(e)}")
+                conversation_history = "\n".join([f"{msg.get('role').capitalize()}: {msg['content']}" for msg in request.previous_conversation])
+                
+                last_candidate_response = ""
+                for msg in reversed(request.previous_conversation):
+                    if msg.get('role') == 'candidate':
+                        last_candidate_response = msg.get('content', '')
+                        break
+                
+                prompt = f"{context}\n\nConversation history:\n{conversation_history}\n\nThe candidate just said: \"{last_candidate_response}\"\n\nRespond to what they said in a conversational way, acknowledging specific points they made. Then ask a natural follow-up question that builds on something specific they mentioned. Make your response feel like a natural conversation rather than a scripted interview. Show that you're actively listening to their answers."
         
-        # Call Gemini API for response generation
+        if len(request.previous_conversation) >= 4:
+            forced_question = "Let's shift gears a bit. Can you tell me about your experience with data analysis tools or programming languages that you've used for statistical analysis?"
+            prompt = f"{context}\n\nConversation history:\n{conversation_history}\n\nThe candidate just said: \"{last_candidate_response}\"\n\nRespond with: {forced_question}"
+        elif len(request.previous_conversation) >= 2:
+            forced_question = "Thank you for sharing that. Now I'd like to know about your experience working in teams. Can you describe a project where you collaborated with others on data analysis or statistical work?"
+            prompt = f"{context}\n\nConversation history:\n{conversation_history}\n\nThe candidate just said: \"{last_candidate_response}\"\n\nRespond with: {forced_question}"
+        
         gemini_model = genai.GenerativeModel('gemini-pro')
-        response = gemini_model.generate_content(prompt)
+        
+        generation_config = {
+            "temperature": 0.8,  
+            "top_p": 0.95,       
+            "top_k": 40,         
+            "max_output_tokens": 800,  
+        }
+        
+        system_prompt = "You are an experienced job interviewer having a natural conversation with a candidate. Your responses should be conversational, engaging, and flow naturally. Avoid sounding robotic or overly formal. Respond directly to what the candidate says and ask thoughtful follow-up questions."
+        
+        enhanced_prompt = f"{system_prompt}\n\n{prompt}"
+        
+        response = gemini_model.generate_content(
+            enhanced_prompt,
+            generation_config=generation_config
+        )
         interview_response = response.text
         
-        # If this is the final message, extract feedback and lists
         if is_final_message:
             try:
-                # Try to structure the response
-                parts = interview_response.split('\n\n')
-                conclusion = parts[0]
+                sections = re.split(r'\n\s*(?=\d+\.\s*[A-Z_]+:)', interview_response)
                 
-                # Extract feedback if available (might be in different formats)
-                feedback_section = next((p for p in parts if 'feedback' in p.lower()), None)
-                feedback = feedback_section if feedback_section else interview_response
+                conclusion = ""
+                overall_assessment = ""
+                strengths = []
+                weaknesses = []
+                technical_evaluation = ""
+                behavioral_evaluation = ""
+                final_recommendation = ""
                 
-                # Try to extract strengths
-                strengths_section = next((p for p in parts if 'strength' in p.lower()), None)
-                if strengths_section:
-                    # Extract bullet points
-                    strengths = re.findall(r'[-*]\s*(.*)', strengths_section)
+                conclusion_match = re.search(r'CONCLUSION:\s*(.*?)(?=\n\s*\d+\.\s*[A-Z_]+:|$)', interview_response, re.DOTALL)
+                if conclusion_match:
+                    conclusion = conclusion_match.group(1).strip()
+                else:
+                    conclusion = sections[0] if sections else interview_response
+                
+                overall_match = re.search(r'OVERALL_ASSESSMENT:\s*(.*?)(?=\n\s*\d+\.\s*[A-Z_]+:|$)', interview_response, re.DOTALL)
+                if overall_match:
+                    overall_assessment = overall_match.group(1).strip()
+                
+                strengths_match = re.search(r'STRENGTHS:\s*(.*?)(?=\n\s*\d+\.\s*[A-Z_]+:|$)', interview_response, re.DOTALL)
+                if strengths_match:
+                    strengths_text = strengths_match.group(1).strip()
+                    strengths = re.findall(r'[-*•]\s*(.*?)(?=\n[-*•]|$)', strengths_text, re.DOTALL)
                     if not strengths:
-                        # Fall back to numbered list
-                        strengths = re.findall(r'\d+\.\s*(.*)', strengths_section)
+                        strengths = re.findall(r'(?:\d+\.)\s*(.*?)(?=\n\d+\.|$)', strengths_text, re.DOTALL)
+                    strengths = [s.strip() for s in strengths if s.strip()]
                 
-                # Try to extract weaknesses/areas for improvement
-                weaknesses_section = next((p for p in parts if 'improvement' in p.lower() or 'weakness' in p.lower()), None)
-                if weaknesses_section:
-                    # Extract bullet points
-                    weaknesses = re.findall(r'[-*]\s*(.*)', weaknesses_section)
+                improvement_match = re.search(r'AREAS_FOR_IMPROVEMENT:\s*(.*?)(?=\n\s*\d+\.\s*[A-Z_]+:|$)', interview_response, re.DOTALL)
+                if improvement_match:
+                    weaknesses_text = improvement_match.group(1).strip()
+                    weaknesses = re.findall(r'[-*•]\s*(.*?)(?=\n[-*•]|$)', weaknesses_text, re.DOTALL)
                     if not weaknesses:
-                        # Fall back to numbered list
-                        weaknesses = re.findall(r'\d+\.\s*(.*)', weaknesses_section)
+                        weaknesses = re.findall(r'(?:\d+\.)\s*(.*?)(?=\n\d+\.|$)', weaknesses_text, re.DOTALL)
+                    weaknesses = [w.strip() for w in weaknesses if w.strip()]
                 
-                # If extraction failed, use simpler approach
+                tech_match = re.search(r'TECHNICAL_EVALUATION:\s*(.*?)(?=\n\s*\d+\.\s*[A-Z_]+:|$)', interview_response, re.DOTALL)
+                if tech_match:
+                    technical_evaluation = tech_match.group(1).strip()
+                
+                behavioral_match = re.search(r'BEHAVIORAL_EVALUATION:\s*(.*?)(?=\n\s*\d+\.\s*[A-Z_]+:|$)', interview_response, re.DOTALL)
+                if behavioral_match:
+                    behavioral_evaluation = behavioral_match.group(1).strip()
+                
+                recommendation_match = re.search(r'FINAL_RECOMMENDATION:\s*(.*?)(?=\n\s*\d+\.\s*[A-Z_]+:|$)', interview_response, re.DOTALL)
+                if recommendation_match:
+                    final_recommendation = recommendation_match.group(1).strip()
+                
+                feedback_parts = []
+                if overall_assessment:
+                    feedback_parts.append(overall_assessment)
+                if technical_evaluation:
+                    feedback_parts.append(f"Technical Assessment: {technical_evaluation}")
+                if behavioral_evaluation:
+                    feedback_parts.append(f"Behavioral Assessment: {behavioral_evaluation}")
+                if final_recommendation:
+                    feedback_parts.append(f"Recommendation: {final_recommendation}")
+                
+                feedback = "\n\n".join(feedback_parts) if feedback_parts else interview_response
+                
                 if not strengths or not weaknesses:
                     interview_response = conclusion
             except Exception as e:
                 print(f"Error extracting feedback: {str(e)}")
                 pass
         
-        # Update conversation history
         conversation = request.previous_conversation.copy()
         conversation.append({"role": "interviewer", "content": interview_response})
         
@@ -1016,12 +1176,14 @@ async def conduct_interview(request: InterviewRequest):
             is_complete=is_final_message,
             feedback=feedback if is_final_message else None,
             strengths=strengths if is_final_message else None,
-            weaknesses=weaknesses if is_final_message else None
+            weaknesses=weaknesses if is_final_message else None,
+            technical_evaluation=technical_evaluation if is_final_message else None,
+            behavioral_evaluation=behavioral_evaluation if is_final_message else None,
+            final_recommendation=final_recommendation if is_final_message else None
         )
         
     except Exception as e:
         print(f"Error in interview API: {str(e)}")
-        # Return a helpful error message
         return JSONResponse(
             status_code=500,
             content={"detail": f"Error generating interview response: {str(e)}"}

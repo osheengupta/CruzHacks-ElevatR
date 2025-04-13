@@ -1,0 +1,40 @@
+John Doe
+Software Engineer
+john.doe@example.com | (123) 456-7890 | linkedin.com/in/johndoe
+
+SUMMARY
+Experienced software engineer with 5 years of experience in full-stack development, specializing in Python, JavaScript, and cloud technologies. Passionate about building scalable applications and solving complex problems.
+
+SKILLS
+Programming Languages: Python, JavaScript, TypeScript, Java, SQL
+Frameworks & Libraries: React, Node.js, Django, Flask, Express
+Cloud & DevOps: AWS, Docker, Kubernetes, CI/CD
+Tools: Git, GitHub, JIRA, Confluence
+Soft Skills: Team leadership, Communication, Problem-solving, Agile methodologies
+
+EXPERIENCE
+Senior Software Engineer | TechCorp Inc. | Jan 2022 - Present
+- Developed and maintained microservices architecture using Python and FastAPI
+- Implemented CI/CD pipelines reducing deployment time by 40%
+- Led a team of 5 engineers to deliver a major product feature on time
+- Optimized database queries resulting in 30% performance improvement
+
+Software Engineer | DataSystems LLC | Mar 2019 - Dec 2021
+- Built responsive web applications using React and TypeScript
+- Created RESTful APIs using Node.js and Express
+- Collaborated with UX designers to implement user-friendly interfaces
+- Participated in code reviews and mentored junior developers
+
+EDUCATION
+Bachelor of Science in Computer Science | University of Technology | 2015-2019
+- GPA: 3.8/4.0
+- Relevant coursework: Data Structures, Algorithms, Database Systems, Web Development
+
+PROJECTS
+Personal Finance Tracker
+- Developed a full-stack application using React, Node.js, and MongoDB
+- Implemented user authentication and data visualization features
+
+Weather Prediction Model
+- Created a machine learning model using Python and scikit-learn
+- Achieved 85% accuracy in predicting weather patterns

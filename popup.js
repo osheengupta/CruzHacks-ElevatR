@@ -20,7 +20,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const errorMessage = document.getElementById('error-message');
   
   // Backend API URL
-  const API_BASE_URL = "http://localhost:8001";
+  const API_BASE_URL = "http://localhost:8005";
   
   // Show initial view by default
   showView(initialView);
@@ -89,8 +89,30 @@ document.addEventListener('DOMContentLoaded', function() {
       action: "processJobWithLLM", 
       jobData: jobData
     }, function(response) {
-      if (chrome.runtime.lastError || !response || response.error) {
-        showError(response?.error || "Error processing job description. Please try again.");
+      if (chrome.runtime.lastError) {
+        console.error('Chrome runtime error:', chrome.runtime.lastError);
+        showError("Extension error. Please refresh the page and try again.");
+        return;
+      }
+      
+      if (!response) {
+        console.error('Empty response received from background script');
+        showError("No response from the extension. Please try again.");
+        return;
+      }
+      
+      if (response.error) {
+        console.error('Error from background script:', response.error);
+        // If it's an AI service error, we'll still have job data thanks to our fallback
+        if (response.error.includes('AI Service Error') && response.title) {
+          // We have fallback data, so we can continue
+          console.log('Using fallback data despite AI service error');
+          displayJobSkills(response);
+          saveJobToStorage(response);
+          return;
+        }
+        
+        showError(response.error || "Error processing job description. Please try again.");
         return;
       }
       
@@ -170,7 +192,9 @@ document.addEventListener('DOMContentLoaded', function() {
     if (jobData.skills && jobData.skills.length > 0) {
       jobData.skills.forEach(function(skill) {
         const skillItem = document.createElement('li');
-        skillItem.textContent = typeof skill === 'string' ? skill : skill.name;
+        // Handle both string skills and object skills with a name property
+        const skillText = typeof skill === 'object' && skill.name ? skill.name : skill;
+        skillItem.textContent = skillText;
         skillItem.className = 'skill-item';
         skillsList.appendChild(skillItem);
       });
@@ -184,12 +208,13 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // Function to save job to storage
   function saveJobToStorage(jobData) {
-    chrome.storage.local.get(['savedJobs', 'skillFrequency'], function(data) {
+    // Function to process and save job data
+    function processAndSaveJob(existingJobs, existingSkillFreq) {
       // Get existing jobs or initialize empty array
-      const jobs = data.savedJobs || [];
+      const jobs = existingJobs || [];
       
       // Get existing skill frequency or initialize empty object
-      const skillFreq = data.skillFrequency || {};
+      const skillFreq = existingSkillFreq || {};
       
       // Create a new job object with unique ID and date
       const newJob = {
@@ -214,12 +239,71 @@ document.addEventListener('DOMContentLoaded', function() {
         });
       }
       
-      // Save updated data to storage
-      chrome.storage.local.set({
-        savedJobs: jobs,
-        skillFrequency: skillFreq
-      });
-    });
+      // Save to both Chrome storage and localStorage for compatibility
+      try {
+        // Save to Chrome storage if available
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+          chrome.storage.local.set({
+            savedJobs: jobs,
+            skillFrequency: skillFreq
+          }, function() {
+            console.log('Job saved to Chrome storage');
+            showView(successView);
+          });
+        }
+        
+        // Also save to localStorage for web page access
+        // Use consistent key names for localStorage to ensure data can be accessed by dashboard
+        localStorage.setItem('savedJobs', JSON.stringify(jobs));
+        localStorage.setItem('skillFrequency', JSON.stringify(skillFreq));
+        
+        // Also save with a more specific key name for redundancy
+        localStorage.setItem('jobSkillTrackerJobs', JSON.stringify(jobs));
+        localStorage.setItem('jobSkillTrackerSkillFrequency', JSON.stringify(skillFreq));
+        console.log('Job saved to localStorage');
+        
+        // Show success view if not already shown by Chrome storage callback
+        if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) {
+          showView(successView);
+        }
+      } catch (error) {
+        console.error('Error saving job:', error);
+        showError('Error saving job. Please try again.');
+      }
+    }
+    
+    // Try to get existing data from Chrome storage first
+    try {
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.get(['savedJobs', 'skillFrequency'], function(data) {
+          processAndSaveJob(data.savedJobs || [], data.skillFrequency || {});
+        });
+      } else {
+        // If Chrome storage is not available, try localStorage
+        const localStorageJobs = localStorage.getItem('savedJobs');
+        const localStorageSkillFreq = localStorage.getItem('skillFrequency');
+        
+        const jobs = localStorageJobs ? JSON.parse(localStorageJobs) : [];
+        const skillFreq = localStorageSkillFreq ? JSON.parse(localStorageSkillFreq) : {};
+        
+        processAndSaveJob(jobs, skillFreq);
+      }
+    } catch (error) {
+      console.error('Error accessing storage:', error);
+      // Try localStorage as fallback
+      try {
+        const localStorageJobs = localStorage.getItem('savedJobs');
+        const localStorageSkillFreq = localStorage.getItem('skillFrequency');
+        
+        const jobs = localStorageJobs ? JSON.parse(localStorageJobs) : [];
+        const skillFreq = localStorageSkillFreq ? JSON.parse(localStorageSkillFreq) : {};
+        
+        processAndSaveJob(jobs, skillFreq);
+      } catch (fallbackError) {
+        console.error('Error accessing localStorage fallback:', fallbackError);
+        showError('Error saving job. Please try again.');
+      }
+    }
   }
   
   // Function to show error message

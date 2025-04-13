@@ -35,6 +35,23 @@
       </div>
     </div>
 
+    <!-- New Top 10 Skills Section -->
+    <section class="dashboard-section top-skills-section">
+      <h2>Top 10 Skills by Job Role</h2>
+      <div class="top-skills-controls">
+        <select id="jobRoleSkillsFilter" class="job-role-filter">
+          <option value="all">All Saved Jobs</option>
+          <!-- Job roles will be populated here dynamically -->
+        </select>
+      </div>
+      <div id="topSkillsList" class="top-skills-list">
+        <!-- Top 10 skills will be populated here -->
+        <div class="empty-state">
+          <p>No jobs saved yet. Save job descriptions to see top skills.</p>
+        </div>
+      </div>
+    </section>
+
     <div class="dashboard-grid">
       <section class="dashboard-section jobs-list-section">
         <h2>Saved Jobs</h2>
@@ -130,15 +147,21 @@
       </section>
 
       <section class="dashboard-section recommendations-section">
-        <h2>Project Recommendations</h2>
+        <h2>Project Recommendations & Learning Resources</h2>
         <button id="analyzeBtn" class="primary-btn">Analyze & Get Recommendations</button>
-        <div id="projectRecommendations" class="hidden">
+        <div id="projectRecommendations">
           <div class="loading-indicator hidden">
             <div class="loader"></div>
-            <p>Generating personalized project recommendations...</p>
+            <p>Generating personalized recommendations...</p>
           </div>
           <div id="recommendationsList">
-            <!-- Project recommendations will be populated here -->
+            <div class="initial-message" style="padding: 20px; background: #f8f9fa; margin: 10px 0; border-radius: 5px; border: 1px solid #ddd;">
+              <strong>No recommendations yet</strong><br>
+              Click the "Analyze & Get Recommendations" button above to generate personalized project and learning resource recommendations based on your skill gaps.
+            </div>
+          </div>
+          <div id="learningResourcesList">
+            <!-- Learning resources will be populated here -->
           </div>
         </div>
       </section>
@@ -251,7 +274,38 @@
     </div>
   </div>
 
+    <script src="dashboard.js"></script>
+  <script src="emergency-fix.js"></script>
+  <script src="fix-buttons.js"></script>
   <script src="interview-prep.js"></script>
-  <script src="fixed-dashboard.js"></script>
+  <script>
+    // Additional script to ensure interview prep is initialized properly
+    document.addEventListener('DOMContentLoaded', function() {
+      console.log('Ensuring interview prep is initialized...');
+      if (typeof initInterviewPrep === 'function') {
+        initInterviewPrep();
+        console.log('Interview prep initialized from additional script');
+      } else {
+        console.error('initInterviewPrep function not found');
+      }
+      
+      // Double-check Start Interview button has event listener
+      const startBtn = document.getElementById('startInterviewBtn');
+      if (startBtn) {
+        startBtn.addEventListener('click', function(event) {
+          console.log('Start Interview button clicked from additional event listener');
+          if (typeof startInterview === 'function') {
+            startInterview(event);
+          } else {
+            console.error('startInterview function not found');
+            alert('Interview feature is not properly initialized. Please refresh the page and try again.');
+          }
+        });
+        console.log('Added backup event listener to Start Interview button');
+      } else {
+        console.error('Start Interview button not found in DOM');
+      }
+    });
+  </script>
 </body>
 </html>

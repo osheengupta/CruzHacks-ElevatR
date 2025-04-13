@@ -60,6 +60,28 @@ function extractJobData() {
     if (companyElement) companyName = companyElement.textContent.trim();
     if (descriptionElement) description = descriptionElement.textContent.trim();
   }
+  else if (url.includes("google.com") && url.includes("careers")) {
+    // Google Careers selectors
+    const titleElement = document.querySelector("h1, h2");
+    companyName = "Google"; // Hardcoded since it's Google Careers
+    
+    // For Google Careers, try to get the main content
+    const descriptionElement = document.querySelector("main") || 
+                              document.querySelector(".content-wrapper") || 
+                              document.querySelector(".article-content");
+    
+    if (titleElement) jobTitle = titleElement.textContent.trim();
+    if (descriptionElement) description = descriptionElement.innerText;
+    
+    // Extract skills from required skills section if available
+    const skillsElements = document.querySelectorAll(".skills-list li, .requirements-list li");
+    if (skillsElements.length > 0) {
+      description += "\n\nRequired Skills:\n";
+      skillsElements.forEach(skill => {
+        description += "- " + skill.textContent.trim() + "\n";
+      });
+    }
+  }
   else if (url.includes("deloitte.com")) {
     // Deloitte selectors
     const titleElement = document.querySelector("h1") || document.querySelector("h2");

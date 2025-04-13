@@ -1,17 +1,32 @@
 from crewai import Agent
-from langchain.llms import OpenAI
+from langchain.chat_models import ChatOpenAI
 import os
 from dotenv import load_dotenv
+import openai
 
 # Load environment variables
 load_dotenv()
 
-# Initialize the OpenAI LLM
-llm = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    temperature=0.7,
-    model_name="gpt-4"
-)
+# Initialize OpenAI client
+openai_client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# Use a simple wrapper for crewai that doesn't rely on LangChain
+class SimpleOpenAIWrapper:
+    def __init__(self, client, model_name="gpt-3.5-turbo", temperature=0.7):
+        self.client = client
+        self.model_name = model_name
+        self.temperature = temperature
+        
+    def __call__(self, prompt):
+        response = self.client.chat.completions.create(
+            model=self.model_name,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=self.temperature
+        )
+        return response.choices[0].message.content
+
+# Initialize our custom LLM wrapper
+llm = SimpleOpenAIWrapper(openai_client)
 
 class JobSkillAgents:
     def __init__(self):

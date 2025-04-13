@@ -1,7 +1,7 @@
 // Background script for JobSkillTracker extension
 
 // Backend API URL
-const API_BASE_URL = "http://localhost:8001";
+const API_BASE_URL = "http://localhost:8005";
 
 // Listen for installation
 chrome.runtime.onInstalled.addListener(function() {
@@ -46,7 +46,8 @@ async function processJobWithCrewAI(jobData) {
       
       // Check if it's an OpenAI API error
       if (errorText.includes('OpenAI')) {
-        throw new Error('AI Service Error: There was an issue with the AI service. Please try again later.');
+        console.log('AI Service Error detected, falling back to mock implementation');
+        return processJobWithMockLLM(jobData);
       } else {
         throw new Error(`API error: ${response.status} - ${errorText}`);
       }
@@ -64,20 +65,16 @@ async function processJobWithCrewAI(jobData) {
     // Add key skills as technical skills
     if (result.key_skills) {
       result.key_skills.forEach(skill => {
-        skills.push({
-          name: skill,
-          type: "technical",
-          confidence: 0.9
-        });
+        // Ensure skill is a string, not an object
+        const skillName = typeof skill === 'object' && skill.name ? skill.name : skill;
+        skills.push(skillName);  // Store as simple string instead of object
       });
     } else if (result.technical_skills) {
       // Backward compatibility with old format
       result.technical_skills.forEach(skill => {
-        skills.push({
-          name: skill,
-          type: "technical",
-          confidence: 0.9
-        });
+        // Ensure skill is a string, not an object
+        const skillName = typeof skill === 'object' && skill.name ? skill.name : skill;
+        skills.push(skillName);  // Store as simple string instead of object
       });
     }
     
@@ -86,32 +83,33 @@ async function processJobWithCrewAI(jobData) {
     const responsibilities = [];
     if (result.requirements) {
       result.requirements.forEach(req => {
+        // Ensure req is a string, not an object
+        const reqText = typeof req === 'object' && req.name ? req.name : req;
+        
         // If the requirement is short (likely a skill), add it as a soft skill
-        if (req.split(' ').length <= 5) {
-          skills.push({
-            name: req,
-            type: "soft",
-            confidence: 0.8
-          });
+        if (reqText.split(' ').length <= 5) {
+          skills.push(reqText);  // Store as simple string instead of object
         } else {
           // Otherwise, it's probably a responsibility
-          responsibilities.push(req);
+          responsibilities.push(reqText);
         }
       });
     } else if (result.soft_skills) {
       // Backward compatibility with old format
       result.soft_skills.forEach(skill => {
-        skills.push({
-          name: skill,
-          type: "soft",
-          confidence: 0.8
-        });
+        // Ensure skill is a string, not an object
+        const skillName = typeof skill === 'object' && skill.name ? skill.name : skill;
+        skills.push(skillName);  // Store as simple string instead of object
       });
     }
     
     // Add responsibilities from the old format if available
     if (result.responsibilities && result.responsibilities.length > 0) {
-      responsibilities.push(...result.responsibilities);
+      result.responsibilities.forEach(resp => {
+        // Ensure responsibility is a string, not an object
+        const respText = typeof resp === 'object' && resp.text ? resp.text : resp;
+        responsibilities.push(respText);
+      });
     }
     
     // Update skill frequency in storage
@@ -161,32 +159,20 @@ async function processJobWithMockLLM(jobData) {
   // Check for technical skills
   technicalSkills.forEach(skill => {
     if (description.includes(skill)) {
-      extractedSkills.push({
-        name: skill,
-        type: "technical",
-        confidence: 0.9
-      });
+      extractedSkills.push(skill);  // Store as simple string instead of object
     }
   });
   
   // Check for soft skills
   softSkills.forEach(skill => {
     if (description.includes(skill)) {
-      extractedSkills.push({
-        name: skill,
-        type: "soft",
-        confidence: 0.8
-      });
+      extractedSkills.push(skill);  // Store as simple string instead of object
     }
   });
   
   // If we didn't find any skills, add some defaults
   if (extractedSkills.length === 0) {
-    extractedSkills.push(
-      { name: "javascript", type: "technical", confidence: 0.7 },
-      { name: "react", type: "technical", confidence: 0.7 },
-      { name: "problem solving", type: "soft", confidence: 0.8 }
-    );
+    extractedSkills.push("javascript", "react", "problem solving");
   }
   
   // Extract responsibilities
@@ -231,21 +217,23 @@ async function processJobWithMockLLM(jobData) {
   };
 }
 
-// Function to update skill frequency
+// Function to update skill frequency in storage
 function updateSkillFrequency(skills) {
-  chrome.storage.local.get({skillFrequency: {}}, function(data) {
-    const skillFrequency = data.skillFrequency;
+  chrome.storage.local.get(['skillFrequency'], function(data) {
+    // Get existing skill frequency or initialize empty object
+    const skillFrequency = data.skillFrequency || {};
     
     // Update frequency for each skill
     skills.forEach(skill => {
-      if (skillFrequency[skill.name]) {
-        skillFrequency[skill.name]++;
+      // All skills are now simple strings
+      if (skillFrequency[skill]) {
+        skillFrequency[skill]++;
       } else {
-        skillFrequency[skill.name] = 1;
+        skillFrequency[skill] = 1;
       }
     });
     
-    // Save updated frequencies
+    // Save updated skill frequency
     chrome.storage.local.set({skillFrequency: skillFrequency});
   });
 }

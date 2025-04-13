@@ -832,6 +832,62 @@ input[type="file"] {
   margin-bottom: 8px;
 }
 
+/* Learning Resources Section */
+.learning-resources-section {
+  margin-top: 24px;
+}
+
+.resource-card {
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  border-left: 4px solid #3498db;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.resource-card h3 {
+  margin-top: 0;
+  color: #2c3e50;
+  font-size: 18px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 8px;
+}
+
+.resource-category {
+  margin-bottom: 16px;
+}
+
+.resource-category h4 {
+  color: #3498db;
+  margin-bottom: 8px;
+  font-size: 16px;
+}
+
+.resource-list {
+  list-style-type: none;
+  padding-left: 0;
+}
+
+.resource-item {
+  margin-bottom: 12px;
+  padding-left: 8px;
+  border-left: 2px solid #e1f0fa;
+}
+
+.resource-item-title {
+  font-weight: 600;
+  color: #34495e;
+  display: block;
+}
+
+.resource-item-description {
+  font-size: 14px;
+  color: #7f8c8d;
+  margin-top: 4px;
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .dashboard-grid {
@@ -855,4 +911,73 @@ input[type="file"] {
   .primary-btn, .secondary-btn {
     width: 100%;
   }
+}
+
+/* Top 10 Skills Section */
+.top-skills-section {
+  margin-top: 24px;
+  margin-bottom: 24px;
+}
+
+.top-skills-controls {
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+}
+
+.job-role-filter {
+  padding: 8px 12px;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+  background-color: white;
+  font-size: 14px;
+  min-width: 200px;
+}
+
+.top-skills-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.skill-card {
+  background-color: #f5f7fa;
+  border-radius: 6px;
+  padding: 12px 16px;
+  border-left: 4px solid #3498db;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.skill-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.skill-name {
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 4px;
+}
+
+.skill-frequency {
+  font-size: 13px;
+  color: #7f8c8d;
+  display: flex;
+  align-items: center;
+}
+
+.skill-frequency-bar {
+  height: 6px;
+  background-color: #e0e6ed;
+  border-radius: 3px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.skill-frequency-fill {
+  height: 100%;
+  background-color: #3498db;
+  border-radius: 3px;
 }

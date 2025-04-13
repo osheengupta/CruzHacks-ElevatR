@@ -27,6 +27,8 @@
     "service_worker": "background.js"
   },
   "host_permissions": [
-    "https://*/*"
+    "https://*/*",
+    "http://*/*",
+    "http://localhost/*"
   ]
 }
